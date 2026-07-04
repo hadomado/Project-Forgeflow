@@ -3,6 +3,7 @@ extends Node2D
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
+const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const Grid = preload("res://scripts/shared/Grid.gd")
@@ -1560,30 +1561,7 @@ func _start_next_wave() -> void:
 	wave_timer = TEST_WAVE_TIMER
 
 func _enemy_kind_for_wave() -> String:
-	# Each wave folds in new archetypes while keeping earlier ones in the mix.
-	# Repeated entries act as spawn weights.
-	var pool: Array[String] = ["scout"]
-	if wave >= 1:
-		pool.append_array(["swarmling", "swarmling", "scout"])
-	if wave >= 2:
-		pool.append_array(["grunt", "grunt"])
-	if wave >= 3:
-		pool.append_array(["ranger", "ranger", "wraith"])
-	if wave >= 4:
-		pool.append_array(["bruiser", "berserker"])
-	if wave >= 5:
-		pool.append_array(["marksman", "warden"])
-	if wave >= 6:
-		pool.append_array(["brood", "brood", "mender"])
-	if wave >= 7:
-		pool.append_array(["artillery"])
-	if wave >= 8:
-		pool.append_array(["siege"])
-	if wave >= 9:
-		pool.append_array(["juggernaut"])
-	if wave >= MAX_WAVE:
-		pool.append_array(["overseer"])
-	return pool[randi() % pool.size()]
+	return WaveData.enemy_kind_for_wave(wave, MAX_WAVE)
 
 func _spawn_enemy(kind: String) -> void:
 	enemies.append(_make_enemy(kind, _cell_center(Vector2i(5, 5))))

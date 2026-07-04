@@ -4,6 +4,7 @@ const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
+const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 
 const TILE = 32
 const MAP_W = 60
@@ -125,8 +126,8 @@ var defs: Dictionary = BuildingData.defs(CORE_SIZE)
 var building_health: Dictionary = BuildingData.health(TEST_CORE_HEALTH)
 var enemy_defs: Dictionary = EnemyData.defs()
 
-var spell_defs: Dictionary = GameData.spell_defs()
-var upgrade_defs: Dictionary = GameData.upgrade_defs()
+var spell_defs: Dictionary = VSData.spell_defs()
+var upgrade_defs: Dictionary = VSData.upgrade_defs()
 
 func _ready() -> void:
 	randomize()

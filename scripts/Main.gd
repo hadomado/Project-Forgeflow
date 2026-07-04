@@ -1412,26 +1412,7 @@ func _update_enemies(delta: float) -> void:
 		_enemy_shoot(e, delta)
 		if def.has("heal_aura"):
 			_enemy_heal_aura(e, def.heal_aura, delta)
-		var move_target = _enemy_move_target(e)
-		var dir: Vector2 = (move_target - e.pos).normalized()
-		if dir.length() > 0.01:
-			e.facing = e.facing.lerp(dir, 0.25).normalized()
-		if float(e.get("leap_left", 0.0)) > 0.0:
-			# Mid-leap: fly along the stored leap vector, ignoring normal pathing.
-			e.pos += e.leap_vel * delta
-			e.leap_left = float(e.leap_left) - delta
-		else:
-			var ahead = _world_cell(e.pos + dir * TILE * 0.7)
-			var blocker = _enemy_blocking_building(ahead)
-			if blocker != null:
-				_enemy_attack_building(e, blocker, delta)
-			elif e.pos.distance_to(move_target) > 4.0:
-				e.pos += dir * _enemy_speed(e, def) * delta
-			else:
-				e.path_index = min(e.path_index + 1, max(e.path.size() - 1, 0))
-		if core_health <= 0.0:
-			lost = true
-			restart_button.visible = true
+		_apply_enemy_attack_events(EnemyRuntime.update_movement(e, def, delta, TILE, CORE_POS, buildings, defs))
 	_apply_enemy_lifecycle_events(EnemyLifecycle.cleanup_dead(enemies, enemy_defs, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs))
 	# Flush spawner / on-death children after iteration to avoid mutating mid-loop.
 	for child in pending_enemy_spawns:
@@ -1542,15 +1523,18 @@ func _apply_enemy_lifecycle_events(events: Dictionary) -> void:
 	_apply_enemy_events(events)
 
 func _enemy_attack_building(e: Dictionary, b: Dictionary, delta: float) -> void:
-	e.attack = e.get("attack", 0.0) + delta
-	if e.attack < 0.45:
-		return
-	e.attack = 0.0
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	if b.id == "core":
-		core_health -= def.damage
-	else:
-		_damage_building(b, def.damage * 1.6)
+	_apply_enemy_attack_events(EnemyRuntime.attack_building(e, b, def, delta))
+
+func _apply_enemy_attack_events(events: Dictionary) -> void:
+	var core_damage := float(events.get("core_damage", 0.0))
+	if core_damage > 0.0:
+		core_health -= core_damage
+		if core_health <= 0.0:
+			lost = true
+			restart_button.visible = true
+	for hit in events.get("building_damage", []):
+		_damage_building(hit.building, float(hit.amount))
 
 func _damage_building(b: Dictionary, amount: float) -> void:
 	b.health -= amount

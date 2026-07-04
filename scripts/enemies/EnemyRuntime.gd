@@ -344,6 +344,38 @@ static func update_projectiles(projectiles: Array[Dictionary], enemies: Array[Di
 			i += 1
 	return events
 
+static func update_movement(e: Dictionary, def: Dictionary, delta: float, tile_size: int, core_pos: Vector2i, buildings: Dictionary, building_defs: Dictionary) -> Dictionary:
+	var events := {"core_damage": 0.0, "building_damage": []}
+	var target_pos := move_target(e, tile_size, core_pos)
+	var dir: Vector2 = (target_pos - Vector2(e.pos)).normalized()
+	if dir.length() > 0.01:
+		e.facing = Vector2(e.facing).lerp(dir, 0.25).normalized()
+	if float(e.get("leap_left", 0.0)) > 0.0:
+		e.pos += e.leap_vel * delta
+		e.leap_left = float(e.leap_left) - delta
+		return events
+	var ahead := Grid.world_cell(Vector2(e.pos) + dir * float(tile_size) * 0.7, tile_size)
+	var blocker = blocking_building(ahead, buildings, building_defs)
+	if blocker != null:
+		return attack_building(e, blocker, def, delta)
+	if Vector2(e.pos).distance_to(target_pos) > 4.0:
+		e.pos += dir * speed(e, def) * delta
+	else:
+		e.path_index = min(int(e.get("path_index", 0)) + 1, max(e.get("path", []).size() - 1, 0))
+	return events
+
+static func attack_building(e: Dictionary, b: Dictionary, def: Dictionary, delta: float) -> Dictionary:
+	var events := {"core_damage": 0.0, "building_damage": []}
+	e.attack = e.get("attack", 0.0) + delta
+	if e.attack < 0.45:
+		return events
+	e.attack = 0.0
+	if b.id == "core":
+		events.core_damage = float(def.damage)
+	else:
+		events.building_damage.append({"building": b, "amount": float(def.damage) * 1.6})
+	return events
+
 static func update_effects(effects: Array[Dictionary], telegraphs: Array[Dictionary], delta: float) -> void:
 	var i := 0
 	while i < effects.size():

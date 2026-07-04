@@ -4,6 +4,7 @@ const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const BuildingRules = preload("res://scripts/buildings/BuildingRules.gd")
 const BuildingStore = preload("res://scripts/buildings/BuildingStore.gd")
+const BuildingRuntime = preload("res://scripts/buildings/BuildingRuntime.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
@@ -913,13 +914,13 @@ func _update_buildings(delta: float) -> void:
 				_emit_liquid_from_building(b, String(defs[b.id].get("fluid_output", "water")))
 
 func _building_center(b: Dictionary) -> Vector2:
-	return Vector2(b.pos) * TILE + Vector2(b.size) * TILE * 0.5
+	return BuildingRuntime.center(b, TILE)
 
 func _building_key(b: Dictionary) -> String:
-	return "%d,%d" % [b.pos.x, b.pos.y]
+	return BuildingRuntime.key(b)
 
 func _power_key(b: Dictionary) -> String:
-	return _building_key(b)
+	return BuildingRuntime.power_key(b)
 
 func _calculate_power_networks(delta: float) -> Dictionary:
 	var seen = {}
@@ -1131,7 +1132,7 @@ func _discharge_batteries(batteries: Array[Dictionary], energy_needed: float) ->
 	return provided
 
 func _power_efficiency_for(b: Dictionary) -> float:
-	return float(power_efficiency.get(_power_key(b), 0.0))
+	return BuildingRuntime.power_efficiency_for(power_efficiency, b)
 
 func _update_lightning_turret(b: Dictionary, delta: float) -> void:
 	var efficiency = _power_efficiency_for(b)

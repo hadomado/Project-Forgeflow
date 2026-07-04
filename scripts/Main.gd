@@ -1386,33 +1386,16 @@ func _building_liquid_capacity(b: Dictionary, kind: String) -> int:
 	return 0
 
 func _turret_ammo_types(b: Dictionary) -> Array:
-	return defs.get(b.id, {}).get("ammo_types", ["copper", "graphite"])
+	return BuildingStore.turret_ammo_types(defs, b)
 
 func _turret_ammo_count(b: Dictionary) -> int:
-	var total = 0
-	for kind in _turret_ammo_types(b):
-		total += _store_count(b, String(kind))
-	return total
+	return BuildingStore.turret_ammo_count(defs, b)
 
 func _take_turret_ammo(b: Dictionary) -> String:
-	var priority: Array = ["pyrite", "graphite", "copper"]
-	for kind in priority:
-		if kind in _turret_ammo_types(b) and _store_count(b, String(kind)) > 0:
-			_take_store(b, String(kind), 1)
-			return String(kind)
-	for kind in _turret_ammo_types(b):
-		if _store_count(b, String(kind)) > 0:
-			_take_store(b, String(kind), 1)
-			return String(kind)
-	return ""
+	return BuildingStore.take_turret_ammo(defs, b)
 
 func _take_turret_liquid(b: Dictionary) -> String:
-	var d: Dictionary = defs.get(b.id, {})
-	for kind in d.get("accepts_liquids", []):
-		if _store_count(b, String(kind)) > 0:
-			_take_store(b, String(kind), 1)
-			return String(kind)
-	return ""
+	return BuildingStore.take_turret_liquid(defs, b)
 func _belt_item_count(cell: Vector2i) -> int:
 	var count = 0
 	for item in items:

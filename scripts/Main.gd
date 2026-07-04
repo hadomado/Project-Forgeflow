@@ -226,13 +226,7 @@ func _drill_output_kind(b: Dictionary) -> String:
 	return BuildingRules.drill_output_kind(terrain, ore, b)
 
 func _disc(center: Vector2i, radius: int) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	for y in range(center.y - radius, center.y + radius + 1):
-		for x in range(center.x - radius, center.x + radius + 1):
-			var p = Vector2i(x, y)
-			if _inside(p) and Vector2(p - center).length() <= radius + randf():
-				out.append(p)
-	return out
+	return Grid.disc(center, radius, MAP_W, MAP_H)
 
 func _place_core() -> void:
 	var b = _make_building("core", CORE_POS, 0, true)
@@ -2572,16 +2566,13 @@ func _mouse_over_ui() -> bool:
 	return m.x > s.x - 490 and m.y > s.y - 350
 
 func _core_contains(p: Vector2i) -> bool:
-	return p.x >= CORE_POS.x and p.x < CORE_POS.x + CORE_SIZE.x and p.y >= CORE_POS.y and p.y < CORE_POS.y + CORE_SIZE.y
+	return Grid.cell_in_rect(p, CORE_POS, CORE_SIZE)
 
 func _touches_core(p: Vector2i) -> bool:
-	for d in DIRS:
-		if _core_contains(p + d):
-			return true
-	return false
+	return Grid.touches_rect(p, CORE_POS, CORE_SIZE, DIRS)
 
 func _cell_in_rect(p: Vector2i, pos: Vector2i, size: Vector2i) -> bool:
-	return p.x >= pos.x and p.x < pos.x + size.x and p.y >= pos.y and p.y < pos.y + size.y
+	return Grid.cell_in_rect(p, pos, size)
 
 func _can_afford(cost: Dictionary) -> bool:
 	return InventoryHelper.can_afford(inventory, cost)

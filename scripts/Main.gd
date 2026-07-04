@@ -6,6 +6,7 @@ const BuildingRules = preload("res://scripts/buildings/BuildingRules.gd")
 const BuildingStore = preload("res://scripts/buildings/BuildingStore.gd")
 const BuildingRuntime = preload("res://scripts/buildings/BuildingRuntime.gd")
 const BuildingText = preload("res://scripts/buildings/BuildingText.gd")
+const BuildingPlacement = preload("res://scripts/buildings/BuildingPlacement.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
@@ -746,33 +747,7 @@ func _try_place(id: String, cell: Vector2i) -> void:
 		blueprints.append({"id": id, "pos": cell, "rot": build_rot, "order": Time.get_ticks_msec()})
 
 func _can_place(id: String, cell: Vector2i) -> bool:
-	if not defs.has(id):
-		return false
-	var def: Dictionary = defs[id]
-	var size: Vector2i = def.size
-	var place_on = String(def.get("place_on", ""))
-	for p in _cells(cell, size):
-		if not _inside(p):
-			return false
-		var t: String = terrain.get(p, "rock")
-		if place_on != "":
-			if t != place_on:
-				return false
-		elif t == "water" or t == "rock" or t == "magma":
-			return false
-		var existing = buildings.get(p)
-		if existing != null:
-			if _is_belt_id(id) and _is_belt_building(existing):
-				continue
-			return false
-	if _is_drill_id(id):
-		if ore.has(cell):
-			var ore_kind = String(ore.get(cell, "copper"))
-			if int(ore_tiers.get(ore_kind, 1)) > int(def.get("mine_tier", 1)):
-				return false
-		elif terrain.get(cell, "ground") != "sand":
-			return false
-	return true
+	return BuildingPlacement.can_place(defs, terrain, ore, ore_tiers, buildings, id, cell, MAP_W, MAP_H)
 
 func _add_building(id: String, cell: Vector2i, rot: int, built: bool) -> void:
 	var b = _make_building(id, cell, rot, built)

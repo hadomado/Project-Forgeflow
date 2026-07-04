@@ -10,6 +10,7 @@ const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
+const VSStats = preload("res://scripts/classes/vampire_survivor/VSStats.gd")
 const Grid = preload("res://scripts/shared/Grid.gd")
 const InventoryHelper = preload("res://scripts/shared/Inventory.gd")
 
@@ -503,13 +504,13 @@ func _toggle_class() -> void:
 
 # --- VS: hero ---
 func _hero_respawn_time() -> float:
-	return VS_RESPAWN_BASE + VS_RESPAWN_PER_LEVEL * vs_level
+	return VSStats.hero_respawn_time(vs_level, VS_RESPAWN_BASE, VS_RESPAWN_PER_LEVEL)
 
 func _hero_max_health() -> float:
-	return VS_HERO_MAX_HEALTH + 25.0 * int(owned_upgrades.get("vitality", 0))
+	return VSStats.hero_max_health(VS_HERO_MAX_HEALTH, owned_upgrades)
 
 func _hero_move_speed() -> float:
-	return VS_MOVE_SPEED * (1.0 + 0.12 * int(owned_upgrades.get("swiftness", 0)))
+	return VSStats.hero_move_speed(VS_MOVE_SPEED, owned_upgrades)
 
 func _damage_hero(amount: float) -> void:
 	if not hero_alive:
@@ -549,7 +550,7 @@ func _drop_orbs(pos: Vector2, count: int) -> void:
 		orbs.append({"pos": pos + jitter})
 
 func _hero_magnet_radius() -> float:
-	return VS_MAGNET_RADIUS * (1.0 + 0.25 * int(owned_upgrades.get("lodestone", 0)))
+	return VSStats.hero_magnet_radius(VS_MAGNET_RADIUS, owned_upgrades)
 
 func _update_orbs(delta: float) -> void:
 	if not _is_combat_class() or not hero_alive:
@@ -607,7 +608,7 @@ func _depot_in_range_of_hero(b: Dictionary) -> bool:
 
 # --- VS: spells ---
 func _spell_cooldown_scale() -> float:
-	return max(0.4, 1.0 - 0.10 * int(owned_upgrades.get("rapid_casting", 0)))
+	return VSStats.spell_cooldown_scale(owned_upgrades)
 
 func _update_spells(delta: float) -> void:
 	if not _is_combat_class() or not hero_alive:
@@ -643,10 +644,7 @@ func _cast_spell(id: String, level: int) -> void:
 
 # Orbiting Blades: `level` blades (capped) circle the hero and damage enemies they sweep.
 func _orbit_blade_count() -> int:
-	var lvl := int(owned_spells.get("orbiting_blades", 0))
-	if lvl <= 0:
-		return 0
-	return min(1 + lvl, ORBIT_MAX_BLADES)
+	return VSStats.orbit_blade_count(owned_spells, ORBIT_MAX_BLADES)
 
 func _orbit_blade_positions() -> Array:
 	var out: Array = []

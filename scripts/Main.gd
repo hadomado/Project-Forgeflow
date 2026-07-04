@@ -2,6 +2,7 @@ extends Node2D
 
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
+const BuildingRules = preload("res://scripts/buildings/BuildingRules.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
@@ -162,56 +163,43 @@ func _cleanup_ore_in_natural_walls() -> void:
 	MapGenerator.cleanup_ore_in_natural_walls(terrain, ore)
 
 func _is_belt_id(id: String) -> bool:
-	return defs.get(id, {}).has("belt_speed") or id == "cross"
+	return BuildingRules.is_belt_id(defs, id)
 
 func _is_belt_building(b: Dictionary) -> bool:
-	return b != null and _is_belt_id(b.id)
+	return BuildingRules.is_belt_building(defs, b)
 
 func _is_drill_id(id: String) -> bool:
-	return defs.get(id, {}).has("mine_tier")
+	return BuildingRules.is_drill_id(defs, id)
 
 func _is_ammo_turret_id(id: String) -> bool:
-	return defs.get(id, {}).get("ammo_turret", false)
+	return BuildingRules.is_ammo_turret_id(defs, id)
 
 func _is_fluid_turret_id(id: String) -> bool:
-	return defs.get(id, {}).get("fluid_turret", false)
+	return BuildingRules.is_fluid_turret_id(defs, id)
 
 func _is_power_turret_id(id: String) -> bool:
-	return defs.get(id, {}).get("power_turret", false)
+	return BuildingRules.is_power_turret_id(defs, id)
 
 func _is_factory_id(id: String) -> bool:
-	return defs.get(id, {}).has("factory_recipe")
+	return BuildingRules.is_factory_id(defs, id)
 
 func _accepts_water(b: Dictionary) -> bool:
-	return defs.get(b.id, {}).get("accepts_water", false)
+	return BuildingRules.accepts_water(defs, b)
 
 func _accepts_liquid(b: Dictionary, kind: String) -> bool:
-	var d: Dictionary = defs.get(b.id, {})
-	if kind == "water" and d.get("accepts_water", false):
-		return true
-	if d.has("accepts_liquids") and kind in d.accepts_liquids:
-		return true
-	if d.has("factory_recipe"):
-		var liquid_input: Dictionary = d.factory_recipe.get("liquid_input", {})
-		return kind == String(liquid_input.get("kind", ""))
-	return false
+	return BuildingRules.accepts_liquid(defs, b, kind)
 
 func _belt_speed_for(b: Dictionary) -> float:
-	return float(defs.get(b.id, {}).get("belt_speed", 2.6))
+	return BuildingRules.belt_speed_for(defs, b)
 
 func _item_color(kind: String) -> Color:
 	return ore_colors.get(kind, Color("#f2c766"))
 
 func _factory_recipe(b: Dictionary) -> Dictionary:
-	return defs.get(b.id, {}).get("factory_recipe", {})
+	return BuildingRules.factory_recipe(defs, b)
 
 func _recipe_inputs(recipe: Dictionary) -> Dictionary:
-	if recipe.has("inputs"):
-		return recipe.inputs
-	var input_kind = String(recipe.get("input", ""))
-	if input_kind == "":
-		return {}
-	return {input_kind: int(recipe.get("input_amount", 1))}
+	return BuildingRules.recipe_inputs(recipe)
 
 func _factory_has_inputs(b: Dictionary, recipe: Dictionary) -> bool:
 	var inputs := _recipe_inputs(recipe)
@@ -233,11 +221,7 @@ func _take_factory_inputs(b: Dictionary, recipe: Dictionary) -> void:
 		_take_store(b, String(liquid_input.get("kind", "")), int(liquid_input.get("amount", 1)))
 
 func _drill_output_kind(b: Dictionary) -> String:
-	if ore.has(b.pos):
-		return String(ore[b.pos])
-	if terrain.get(b.pos, "ground") == "sand":
-		return "sand"
-	return "copper"
+	return BuildingRules.drill_output_kind(terrain, ore, b)
 
 func _disc(center: Vector2i, radius: int) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []

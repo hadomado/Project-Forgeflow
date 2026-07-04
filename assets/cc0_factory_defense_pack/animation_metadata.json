@@ -1,0 +1,128 @@
+{
+  "assets/cc0_factory_defense_pack/art/blocks/conveyor_north_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Conveyor belt moving north"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/drill_north_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 4,
+    "layout": "horizontal",
+    "note": "Ore drill with north output"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/conveyor_east_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Conveyor belt moving east"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/drill_east_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 4,
+    "layout": "horizontal",
+    "note": "Ore drill with east output"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/conveyor_south_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Conveyor belt moving south"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/drill_south_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 4,
+    "layout": "horizontal",
+    "note": "Ore drill with south output"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/conveyor_west_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Conveyor belt moving west"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/drill_west_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 4,
+    "layout": "horizontal",
+    "note": "Ore drill with west output"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/turret_shoot_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 4,
+    "layout": "horizontal",
+    "note": "Compact turret firing animation"
+  },
+  "assets/cc0_factory_defense_pack/art/blocks/core_idle_sheet.png": {
+    "frame_width": 96,
+    "frame_height": 96,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "3x3 command core idle pulse"
+  },
+  "assets/cc0_factory_defense_pack/art/enemies/scout_walk_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Scout enemy walk loop"
+  },
+  "assets/cc0_factory_defense_pack/art/enemies/crawler_walk_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Crawler enemy walk loop"
+  },
+  "assets/cc0_factory_defense_pack/art/enemies/bruiser_walk_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Bruiser enemy walk loop"
+  },
+  "assets/cc0_factory_defense_pack/art/enemies/runner_walk_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Runner enemy walk loop"
+  },
+  "assets/cc0_factory_defense_pack/art/enemies/boss_seed_walk_sheet.png": {
+    "frame_width": 32,
+    "frame_height": 32,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Boss Seed enemy walk loop"
+  },
+  "assets/cc0_factory_defense_pack/art/effects/small_hit_sheet.png": {
+    "frame_width": 64,
+    "frame_height": 64,
+    "frames": 6,
+    "layout": "horizontal",
+    "note": "Small Hit effect"
+  },
+  "assets/cc0_factory_defense_pack/art/effects/ore_burst_sheet.png": {
+    "frame_width": 64,
+    "frame_height": 64,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Ore Burst effect"
+  },
+  "assets/cc0_factory_defense_pack/art/effects/core_damage_sheet.png": {
+    "frame_width": 64,
+    "frame_height": 64,
+    "frames": 8,
+    "layout": "horizontal",
+    "note": "Core Damage effect"
+  }
+}

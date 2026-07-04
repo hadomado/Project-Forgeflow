@@ -1,0 +1,69 @@
+file,kind,width,height,frames,frame_width,frame_height,note
+assets/cc0_factory_defense_pack/art/tiles/ground_0.png,tile,32,32,1,32,32,Buildable ground variant 0
+assets/cc0_factory_defense_pack/art/tiles/ground_1.png,tile,32,32,1,32,32,Buildable ground variant 1
+assets/cc0_factory_defense_pack/art/tiles/ground_2.png,tile,32,32,1,32,32,Buildable ground variant 2
+assets/cc0_factory_defense_pack/art/tiles/ground_3.png,tile,32,32,1,32,32,Buildable ground variant 3
+assets/cc0_factory_defense_pack/art/tiles/ground_4.png,tile,32,32,1,32,32,Buildable ground variant 4
+assets/cc0_factory_defense_pack/art/tiles/ground_5.png,tile,32,32,1,32,32,Buildable ground variant 5
+assets/cc0_factory_defense_pack/art/tiles/ground_6.png,tile,32,32,1,32,32,Buildable ground variant 6
+assets/cc0_factory_defense_pack/art/tiles/ground_7.png,tile,32,32,1,32,32,Buildable ground variant 7
+assets/cc0_factory_defense_pack/art/tiles/ore_0.png,tile,32,32,1,32,32,Ore tile variant 0
+assets/cc0_factory_defense_pack/art/tiles/ore_1.png,tile,32,32,1,32,32,Ore tile variant 1
+assets/cc0_factory_defense_pack/art/tiles/ore_2.png,tile,32,32,1,32,32,Ore tile variant 2
+assets/cc0_factory_defense_pack/art/tiles/ore_3.png,tile,32,32,1,32,32,Ore tile variant 3
+assets/cc0_factory_defense_pack/art/tiles/ore_4.png,tile,32,32,1,32,32,Ore tile variant 4
+assets/cc0_factory_defense_pack/art/tiles/ore_5.png,tile,32,32,1,32,32,Ore tile variant 5
+assets/cc0_factory_defense_pack/art/tiles/rock_0.png,tile,32,32,1,32,32,Blocking rock tile variant 0
+assets/cc0_factory_defense_pack/art/tiles/rock_1.png,tile,32,32,1,32,32,Blocking rock tile variant 1
+assets/cc0_factory_defense_pack/art/tiles/rock_2.png,tile,32,32,1,32,32,Blocking rock tile variant 2
+assets/cc0_factory_defense_pack/art/tiles/rock_3.png,tile,32,32,1,32,32,Blocking rock tile variant 3
+assets/cc0_factory_defense_pack/art/tiles/rock_4.png,tile,32,32,1,32,32,Blocking rock tile variant 4
+assets/cc0_factory_defense_pack/art/tiles/rock_5.png,tile,32,32,1,32,32,Blocking rock tile variant 5
+assets/cc0_factory_defense_pack/art/tiles/enemy_path_0.png,tile,32,32,1,32,32,Enemy path tile variant 0
+assets/cc0_factory_defense_pack/art/tiles/enemy_path_1.png,tile,32,32,1,32,32,Enemy path tile variant 1
+assets/cc0_factory_defense_pack/art/tiles/enemy_path_2.png,tile,32,32,1,32,32,Enemy path tile variant 2
+assets/cc0_factory_defense_pack/art/tiles/enemy_path_3.png,tile,32,32,1,32,32,Enemy path tile variant 3
+assets/cc0_factory_defense_pack/art/tiles/enemy_spawn.png,tile,32,32,1,32,32,Enemy spawn marker
+assets/cc0_factory_defense_pack/art/blocks/conveyor_north_sheet.png,animated_block,256,32,8,32,32,Conveyor belt moving north
+assets/cc0_factory_defense_pack/art/blocks/drill_north_sheet.png,animated_block,128,32,4,32,32,Ore drill with north output
+assets/cc0_factory_defense_pack/art/blocks/conveyor_east_sheet.png,animated_block,256,32,8,32,32,Conveyor belt moving east
+assets/cc0_factory_defense_pack/art/blocks/drill_east_sheet.png,animated_block,128,32,4,32,32,Ore drill with east output
+assets/cc0_factory_defense_pack/art/blocks/conveyor_south_sheet.png,animated_block,256,32,8,32,32,Conveyor belt moving south
+assets/cc0_factory_defense_pack/art/blocks/drill_south_sheet.png,animated_block,128,32,4,32,32,Ore drill with south output
+assets/cc0_factory_defense_pack/art/blocks/conveyor_west_sheet.png,animated_block,256,32,8,32,32,Conveyor belt moving west
+assets/cc0_factory_defense_pack/art/blocks/drill_west_sheet.png,animated_block,128,32,4,32,32,Ore drill with west output
+assets/cc0_factory_defense_pack/art/blocks/turret_shoot_sheet.png,animated_block,128,32,4,32,32,Compact turret firing animation
+assets/cc0_factory_defense_pack/art/blocks/core_idle_sheet.png,animated_block,576,96,6,96,96,3x3 command core idle pulse
+assets/cc0_factory_defense_pack/art/blocks/wall_0.png,block,32,32,1,32,32,Wall 0 block
+assets/cc0_factory_defense_pack/art/blocks/wall_1.png,block,32,32,1,32,32,Wall 1 block
+assets/cc0_factory_defense_pack/art/blocks/wall_2.png,block,32,32,1,32,32,Wall 2 block
+assets/cc0_factory_defense_pack/art/blocks/router_four_way.png,block,32,32,1,32,32,Router Four Way block
+assets/cc0_factory_defense_pack/art/blocks/power_node_placeholder.png,block,32,32,1,32,32,Power Node Placeholder block
+assets/cc0_factory_defense_pack/art/items/ore_0.png,item,16,16,1,16,16,Ore item variant 0
+assets/cc0_factory_defense_pack/art/items/ore_1.png,item,16,16,1,16,16,Ore item variant 1
+assets/cc0_factory_defense_pack/art/items/ore_2.png,item,16,16,1,16,16,Ore item variant 2
+assets/cc0_factory_defense_pack/art/items/ore_3.png,item,16,16,1,16,16,Ore item variant 3
+assets/cc0_factory_defense_pack/art/items/ore_4.png,item,16,16,1,16,16,Ore item variant 4
+assets/cc0_factory_defense_pack/art/items/ore_5.png,item,16,16,1,16,16,Ore item variant 5
+assets/cc0_factory_defense_pack/art/items/ore_6.png,item,16,16,1,16,16,Ore item variant 6
+assets/cc0_factory_defense_pack/art/items/ore_7.png,item,16,16,1,16,16,Ore item variant 7
+assets/cc0_factory_defense_pack/art/items/ammo_crate_0.png,item,16,16,1,16,16,Ammo_Crate item variant 0
+assets/cc0_factory_defense_pack/art/enemies/scout_walk_sheet.png,animated_enemy,192,32,6,32,32,Scout enemy walk loop
+assets/cc0_factory_defense_pack/art/enemies/crawler_walk_sheet.png,animated_enemy,192,32,6,32,32,Crawler enemy walk loop
+assets/cc0_factory_defense_pack/art/enemies/bruiser_walk_sheet.png,animated_enemy,192,32,6,32,32,Bruiser enemy walk loop
+assets/cc0_factory_defense_pack/art/enemies/runner_walk_sheet.png,animated_enemy,192,32,6,32,32,Runner enemy walk loop
+assets/cc0_factory_defense_pack/art/enemies/boss_seed_walk_sheet.png,animated_enemy,192,32,6,32,32,Boss Seed enemy walk loop
+assets/cc0_factory_defense_pack/art/projectiles/ore_slug.png,projectile,32,32,1,32,32,Ore Slug projectile
+assets/cc0_factory_defense_pack/art/projectiles/blue_laser.png,projectile,32,32,1,32,32,Blue Laser projectile
+assets/cc0_factory_defense_pack/art/projectiles/red_enemy_shot.png,projectile,32,32,1,32,32,Red Enemy Shot projectile
+assets/cc0_factory_defense_pack/art/effects/small_hit_sheet.png,animated_effect,384,64,6,64,64,Small Hit effect
+assets/cc0_factory_defense_pack/art/effects/ore_burst_sheet.png,animated_effect,512,64,8,64,64,Ore Burst effect
+assets/cc0_factory_defense_pack/art/effects/core_damage_sheet.png,animated_effect,512,64,8,64,64,Core Damage effect
+assets/cc0_factory_defense_pack/art/ui/icons/build_drill.png,ui_icon,32,32,1,32,32,Build Drill toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/build_conveyor.png,ui_icon,32,32,1,32,32,Build Conveyor toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/build_turret.png,ui_icon,32,32,1,32,32,Build Turret toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/build_wall.png,ui_icon,32,32,1,32,32,Build Wall toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/delete_tool.png,ui_icon,32,32,1,32,32,Delete Tool toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/ore_counter.png,ui_icon,32,32,1,32,32,Ore Counter toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/health.png,ui_icon,32,32,1,32,32,Health toolbar icon
+assets/cc0_factory_defense_pack/art/ui/icons/wave.png,ui_icon,32,32,1,32,32,Wave toolbar icon

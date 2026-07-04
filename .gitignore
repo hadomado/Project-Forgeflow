@@ -1,0 +1,17 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot/export generated files
+.import/
+export.cfg
+export_presets.cfg
+
+# Download caches; extracted asset files are tracked separately.
+assets/free_online_asset_library/_downloads/
+
+# OS/editor noise
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log

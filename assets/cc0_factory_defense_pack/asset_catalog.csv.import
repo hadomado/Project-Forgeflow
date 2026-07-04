@@ -1,0 +1,17 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://c60tmclh5x517"
+
+[deps]
+
+files=["res://assets/cc0_factory_defense_pack/asset_catalog.kind.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.width.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.height.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frames.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frame.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frame.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.note.translation"]
+
+source_file="res://assets/cc0_factory_defense_pack/asset_catalog.csv"
+dest_files=["res://assets/cc0_factory_defense_pack/asset_catalog.kind.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.width.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.height.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frames.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frame.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.frame.translation", "res://assets/cc0_factory_defense_pack/asset_catalog.note.translation"]
+
+[params]
+
+compress=true
+delimiter=0

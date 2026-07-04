@@ -1309,25 +1309,7 @@ func _update_items(delta: float) -> void:
 			i += 1
 
 func _deliver_item_to_building(b: Dictionary, kind: String) -> bool:
-	if not _deliver_item_to_building_would_accept(b, kind):
-		return false
-	if _is_ammo_turret_id(b.id) and _turret_ammo_count(b) >= 3:
-		return false
-	if _store_count(b, kind) >= _building_item_capacity(b, kind):
-		return false
-	if b.id == "generator" and kind == "coal":
-		_add_store(b, kind, 1)
-		return true
-	if _is_factory_id(b.id) and _recipe_inputs(_factory_recipe(b)).has(kind):
-		_add_store(b, kind, 1)
-		return true
-	if _is_ammo_turret_id(b.id) and kind in _turret_ammo_types(b):
-		_add_store(b, kind, 1)
-		return true
-	if b.id == "xp_sink" and _xp_value(kind) > 0:
-		_add_store(b, kind, 1)
-		return true
-	return false
+	return BuildingStore.deliver_item(defs, b, kind, _xp_value(kind))
 
 func _deliver_item_to_building_would_accept(b: Dictionary, kind: String) -> bool:
 	return BuildingRules.item_delivery_would_accept(defs, b, kind, _xp_value(kind))

@@ -41,14 +41,17 @@ static func take_turret_liquid(defs: Dictionary, b: Dictionary) -> String:
 	return ""
 
 static func deliver_item(defs: Dictionary, b: Dictionary, kind: String, xp_value: int) -> bool:
+	if not can_deliver_item(defs, b, kind, xp_value):
+		return false
+	add(b, kind, 1)
+	return true
+
+static func can_deliver_item(defs: Dictionary, b: Dictionary, kind: String, xp_value: int) -> bool:
 	if not BuildingRules.item_delivery_would_accept(defs, b, kind, xp_value):
 		return false
 	if BuildingRules.is_ammo_turret_id(defs, b.id) and turret_ammo_count(defs, b) >= 3:
 		return false
-	if count(b, kind) >= BuildingRules.building_item_capacity(defs, b, kind):
-		return false
-	add(b, kind, 1)
-	return true
+	return count(b, kind) < BuildingRules.building_item_capacity(defs, b, kind)
 
 static func deliver_liquid(defs: Dictionary, b: Dictionary, kind: String) -> bool:
 	if not BuildingRules.accepts_liquid(defs, b, kind):

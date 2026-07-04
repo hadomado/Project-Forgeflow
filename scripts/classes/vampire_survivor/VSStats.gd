@@ -1,7 +1,7 @@
 extends RefCounted
 
-static func hero_respawn_time(level: int, base_time: float, per_level: float) -> float:
-	return base_time + per_level * level
+static func hero_respawn_time(level: int, per_level: float, cap: float) -> float:
+	return minf(per_level * float(level), cap)
 
 static func hero_max_health(base_health: float, owned_upgrades: Dictionary) -> float:
 	return base_health + 25.0 * int(owned_upgrades.get("vitality", 0))

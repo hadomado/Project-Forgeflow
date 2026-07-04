@@ -14,6 +14,10 @@ const EnemyRuntime = preload("res://scripts/enemies/EnemyRuntime.gd")
 const EnemyDrawing = preload("res://scripts/enemies/EnemyDrawing.gd")
 const EnemyLifecycle = preload("res://scripts/enemies/EnemyLifecycle.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
+const RuntimeTileMapRenderer = preload("res://scripts/map/RuntimeTileMapRenderer.gd")
+const EnemyActorScene = preload("res://scenes/enemies/EnemyActor.tscn")
+const BuildingActorScene = preload("res://scenes/buildings/BuildingActor.tscn")
+const ConveyorItemActorScene = preload("res://scenes/items/ConveyorItemActor.tscn")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
 const VSStats = preload("res://scripts/classes/vampire_survivor/VSStats.gd")
@@ -31,11 +35,13 @@ const SPAWN_ORIGIN = Vector2i(MAX_RING * CHUNK, MAX_RING * CHUNK)  # (120,120)
 const WAVES_PER_CHUNK = 5                         # defeat this many waves -> open a chunk
 const ACTIVE_SPAWN_CHUNKS = 10                    # only the furthest N chunks spawn enemies
 const BUILD_RANGE = 260.0
+const PLAYER_FIRE_INTERVAL := 0.28               # factory drone gun: fixed seconds between shots
 const CORE_POS = Vector2i(MAX_RING * CHUNK + 10, MAX_RING * CHUNK + 10)  # (130,130) chunk centre
 const CORE_SIZE = Vector2i(3, 3)
 const DIRS = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]
 const DIR_NAMES = ["E", "S", "W", "N"]
 const BELT_CAPACITY = 3
+const ITEM_STACK_VISUAL_SPACING = 0.32
 const TEST_STARTING_RESOURCES = {"copper": 999, "coal": 999, "graphite": 999, "lead": 999, "titanium": 999, "thorium": 999, "sand": 999, "silicon": 999, "plastinium": 999, "pyrite": 999, "water": 0}
 const TEST_CORE_HEALTH = 999.0
 const TEST_WAVE_TIMER = 999.0
@@ -56,8 +62,8 @@ const BEAM_MAX_CHARGE = 2
 const VS_ORB_CAP := 200
 const VS_MAGNET_RADIUS := 90.0
 const VS_HERO_MAX_HEALTH := 100.0
-const VS_RESPAWN_BASE := 2.0
-const VS_RESPAWN_PER_LEVEL := 2.0
+const VS_RESPAWN_PER_LEVEL := 1.0                 # death penalty: seconds per hero level...
+const VS_RESPAWN_CAP := 20.0                      # ...capped here
 const VS_MOVE_SPEED := 245.0
 const ORBIT_RADIUS := 66.0
 const ORBIT_SPEED := 3.4
@@ -75,6 +81,23 @@ var chunk_order: Array[Vector2i] = []   # spiral expansion order (spawn chunk fi
 var map_seed: int = 1337                # world seed; set before _generate_level to control the map (0 = random)
 var open_min: Vector2i = SPAWN_ORIGIN   # tile bounds of the opened area (for clamping/draw)
 var open_max: Vector2i = SPAWN_ORIGIN + Vector2i(CHUNK - 1, CHUNK - 1)
+var terrain_tile_layer: TileMapLayer
+var ore_tile_layer: TileMapLayer
+var conveyor_tile_layer: TileMapLayer
+var terrain_tile_source_id: int = 0
+var ore_tile_source_id: int = 0
+var conveyor_tile_source_id: int = 0
+var terrain_tile_coords: Dictionary = {}
+var ore_tile_coords: Dictionary = {}
+var conveyor_tile_coords: Dictionary = {}
+var enemy_actor_root: Node2D
+var enemy_actors: Dictionary = {}
+var next_enemy_runtime_id: int = 1
+var building_actor_root: Node2D
+var building_actors: Dictionary = {}
+var item_actor_root: Node2D
+var item_actors: Dictionary = {}
+var next_item_runtime_id: int = 1
 var buildings = {}
 var blueprints: Array[Dictionary] = []
 var items: Array[Dictionary] = []
@@ -89,6 +112,7 @@ var player_vel = Vector2.ZERO
 var player_health = PLAYER_MAX_HEALTH
 var player_respawn = 0.0
 var player_alive = true
+var player_fire_cd := 0.0                # factory gun cooldown timer (hold-to-fire, rate-limited)
 var core_health = TEST_CORE_HEALTH
 var wave = 0
 var wave_timer = TEST_WAVE_TIMER
@@ -174,6 +198,10 @@ func _ready() -> void:
 	camera.zoom = Vector2(0.85, 0.85)
 	camera.position = player_pos
 	add_child(camera)
+	_make_runtime_tilemaps()
+	_make_building_actor_root()
+	_make_enemy_actor_root()
+	_make_item_actor_root()
 	_generate_level()
 	_place_core()
 	_make_ui()
@@ -203,8 +231,94 @@ func _generate_level() -> void:
 	map_seed = int(world["seed"])   # resolve a random (0) seed to the one actually used
 	open_chunks = [world["spawn_chunk"]]
 	_recalc_open_bounds()
+	_repaint_map_tile_layers()
 	player_pos = _cell_center(CORE_POS + Vector2i(1, 4))
 	hero_pos = player_pos
+
+func _make_runtime_tilemaps() -> void:
+	var terrain_atlas: Dictionary = RuntimeTileMapRenderer.make_color_atlas(TILE, _terrain_tile_specs())
+	terrain_tile_source_id = int(terrain_atlas["source_id"])
+	terrain_tile_coords = terrain_atlas["coords"]
+	terrain_tile_layer = RuntimeTileMapRenderer.make_layer("TerrainTileMap", terrain_atlas["tile_set"], -100)
+	add_child(terrain_tile_layer)
+
+	var ore_atlas: Dictionary = RuntimeTileMapRenderer.make_color_atlas(TILE, _ore_tile_specs())
+	ore_tile_source_id = int(ore_atlas["source_id"])
+	ore_tile_coords = ore_atlas["coords"]
+	ore_tile_layer = RuntimeTileMapRenderer.make_layer("OreTileMap", ore_atlas["tile_set"], -90)
+	add_child(ore_tile_layer)
+
+	var conveyor_atlas: Dictionary = RuntimeTileMapRenderer.make_conveyor_atlas(TILE, _conveyor_tile_ids())
+	conveyor_tile_source_id = int(conveyor_atlas["source_id"])
+	conveyor_tile_coords = conveyor_atlas["coords"]
+	conveyor_tile_layer = RuntimeTileMapRenderer.make_layer("ConveyorTileMap", conveyor_atlas["tile_set"], -20)
+	add_child(conveyor_tile_layer)
+
+func _terrain_tile_specs() -> Array[Dictionary]:
+	return [
+		{"id": "ground", "color": Color("#586454")},
+		{"id": "stone", "color": Color("#68705f")},
+		{"id": "rock", "color": Color("#3d4248")},
+		{"id": "water", "color": Color("#285f82")},
+		{"id": "sand", "color": Color("#c9b072")},
+		{"id": "magma", "color": Color("#b5432a")},
+		{"id": "geode", "color": Color("#7d5ba6")},
+		{"id": "spawn", "color": Color("#94393f")},
+	]
+
+func _ore_tile_specs() -> Array[Dictionary]:
+	var specs: Array[Dictionary] = []
+	for kind in ore_colors:
+		specs.append({"id": String(kind), "color": ore_colors[kind], "shape": "circle", "radius": 10.0})
+	return specs
+
+func _conveyor_tile_ids() -> Array[String]:
+	return ["conveyor", "fast_conveyor", "titan_conveyor", "thorium_conveyor", "cross"]
+
+func _repaint_map_tile_layers() -> void:
+	if terrain_tile_layer == null or ore_tile_layer == null:
+		return
+	RuntimeTileMapRenderer.repaint_world(
+		terrain_tile_layer,
+		ore_tile_layer,
+		terrain_tile_source_id,
+		ore_tile_source_id,
+		terrain_tile_coords,
+		ore_tile_coords,
+		terrain,
+		ore,
+		open_chunks,
+		chunk_meta
+	)
+
+func _repaint_conveyor_tile_layer() -> void:
+	if conveyor_tile_layer == null:
+		return
+	RuntimeTileMapRenderer.repaint_conveyors(
+		conveyor_tile_layer,
+		conveyor_tile_source_id,
+		conveyor_tile_coords,
+		buildings,
+		_conveyor_tile_ids()
+	)
+
+func _make_enemy_actor_root() -> void:
+	enemy_actor_root = Node2D.new()
+	enemy_actor_root.name = "EnemyActors"
+	enemy_actor_root.z_index = 20
+	add_child(enemy_actor_root)
+
+func _make_building_actor_root() -> void:
+	building_actor_root = Node2D.new()
+	building_actor_root.name = "BuildingActors"
+	building_actor_root.z_index = 5
+	add_child(building_actor_root)
+
+func _make_item_actor_root() -> void:
+	item_actor_root = Node2D.new()
+	item_actor_root.name = "ConveyorItemActors"
+	item_actor_root.z_index = -10
+	add_child(item_actor_root)
 
 # --- Chunk expansion -------------------------------------------------------
 
@@ -221,6 +335,7 @@ func _sync_open_chunks() -> void:
 		changed = true
 	if changed:
 		_recalc_open_bounds()
+		_repaint_map_tile_layers()
 		queue_redraw()
 
 # Open the next chunk in the spiral order. Returns false when the world is full.
@@ -334,6 +449,7 @@ func _place_core() -> void:
 	b.size = CORE_SIZE
 	for p in _cells(CORE_POS, CORE_SIZE):
 		buildings[p] = b
+	_sync_building_actors()
 
 func _make_ui() -> void:
 	ui_root = CanvasLayer.new()
@@ -519,6 +635,11 @@ func _update_player(delta: float) -> void:
 	player_pos += player_vel * delta
 	player_pos.x = clamp(player_pos.x, open_min.x * TILE, (open_max.x + 1) * TILE)
 	player_pos.y = clamp(player_pos.y, open_min.y * TILE, (open_max.y + 1) * TILE)
+	# Drone gun: hold left click to fire at a fixed rate. Firing is gated by
+	# player_fire_cd inside _shoot_at, so holding and spam-clicking fire equally fast.
+	player_fire_cd = maxf(0.0, player_fire_cd - delta)
+	if selected == "" and not _mouse_over_ui() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_shoot_at(get_global_mouse_position())
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("rotate_build"):
@@ -571,8 +692,12 @@ func _commit_drag() -> void:
 	if selected == "":
 		return
 	var cells = _drag_cells()
-	for cell in cells:
-		_try_place(selected, cell)
+	for i in range(cells.size()):
+		var cell: Vector2i = cells[i]
+		var allow_cross := _is_belt_id(selected) and cells.size() > 1 and i > 0 and i < cells.size() - 1
+		if _should_skip_drag_belt_endpoint(selected, cell, i, cells.size()):
+			continue
+		_try_place(selected, cell, allow_cross)
 
 func _pick_building_at(cell: Vector2i) -> void:
 	var b = buildings.get(cell)
@@ -608,7 +733,7 @@ func _toggle_class() -> void:
 
 # --- VS: hero ---
 func _hero_respawn_time() -> float:
-	return VSStats.hero_respawn_time(vs_level, VS_RESPAWN_BASE, VS_RESPAWN_PER_LEVEL)
+	return VSStats.hero_respawn_time(vs_level, VS_RESPAWN_PER_LEVEL, VS_RESPAWN_CAP)
 
 func _hero_max_health() -> float:
 	return VSStats.hero_max_health(VS_HERO_MAX_HEALTH, owned_upgrades)
@@ -832,7 +957,13 @@ func _on_level_up_pick(index: int) -> void:
 	if levelup_queue > 0:
 		_open_level_up()
 
-func _try_place(id: String, cell: Vector2i) -> void:
+func _should_skip_drag_belt_endpoint(id: String, cell: Vector2i, index: int, cell_count: int) -> bool:
+	if not _is_belt_id(id) or cell_count <= 1 or index != cell_count - 1:
+		return false
+	var existing = buildings.get(cell)
+	return existing != null and _is_belt_building(existing)
+
+func _try_place(id: String, cell: Vector2i, allow_cross := false) -> void:
 	if not defs.has(id):
 		return
 	var def: Dictionary = defs[id]
@@ -840,20 +971,28 @@ func _try_place(id: String, cell: Vector2i) -> void:
 		return
 	var existing = buildings.get(cell)
 	if _is_belt_id(id) and existing != null and _is_belt_building(existing) and existing.id != "cross":
-		if id == "conveyor" and existing.rot % 2 != build_rot % 2:
+		if allow_cross and existing.rot % 2 != build_rot % 2:
 			existing.id = "cross"
 			existing.rot = build_rot
+			_repaint_conveyor_tile_layer()
 		elif existing.rot != build_rot:
 			existing.rot = build_rot
 			existing.id = id
 			existing.health = building_health.get(id, existing.health)
+			_repaint_conveyor_tile_layer()
 		elif existing.id != id:
 			existing.id = id
 			existing.health = building_health.get(id, existing.health)
+			_repaint_conveyor_tile_layer()
 		return
 	if _is_belt_id(id) and existing != null and existing.id == "cross":
+		if not allow_cross:
+			existing.id = id
+			existing.rot = build_rot
+			existing.health = building_health.get(id, existing.health)
+			_repaint_conveyor_tile_layer()
 		return
-	var in_range = _cell_center(cell).distance_to(player_pos) <= BUILD_RANGE
+	var in_range = _cell_center(cell).distance_to(_active_avatar_pos()) <= BUILD_RANGE
 	if in_range and _can_afford(def.cost):
 		_pay(def.cost)
 		_add_building(id, cell, build_rot, true)
@@ -867,6 +1006,8 @@ func _add_building(id: String, cell: Vector2i, rot: int, built: bool) -> void:
 	var b = _make_building(id, cell, rot, built)
 	for p in _cells(cell, b.size):
 		buildings[p] = b
+	_sync_building_actors()
+	_repaint_conveyor_tile_layer()
 
 func _make_building(id: String, cell: Vector2i, rot: int, built: bool) -> Dictionary:
 	return BuildingRuntime.make(defs, building_health, id, cell, rot, built)
@@ -875,7 +1016,7 @@ func _update_blueprints() -> void:
 	var i = 0
 	while i < blueprints.size():
 		var bp = blueprints[i]
-		if _cell_center(bp.pos).distance_to(player_pos) <= BUILD_RANGE and _can_afford(defs[bp.id].cost) and _can_place(bp.id, bp.pos):
+		if _cell_center(bp.pos).distance_to(_active_avatar_pos()) <= BUILD_RANGE and _can_afford(defs[bp.id].cost) and _can_place(bp.id, bp.pos):
 			_pay(defs[bp.id].cost)
 			_add_building(bp.id, bp.pos, bp.rot, true)
 			blueprints.remove_at(i)
@@ -988,6 +1129,48 @@ func _update_buildings(delta: float) -> void:
 			if b.timer >= interval:
 				b.timer = 0.0
 				_emit_liquid_from_building(b, String(defs[b.id].get("fluid_output", "water")))
+	_sync_building_actors()
+
+func _sync_building_actors() -> void:
+	if building_actor_root == null:
+		return
+	var alive_keys := {}
+	var seen := {}
+	for b in buildings.values():
+		var key := _building_key(b)
+		if seen.has(key):
+			continue
+		seen[key] = true
+		if not _building_uses_scene_actor(b):
+			continue
+		alive_keys[key] = true
+		var actor = building_actors.get(key)
+		if actor == null:
+			actor = BuildingActorScene.instantiate()
+			building_actor_root.add_child(actor)
+			building_actors[key] = actor
+		actor.sync_from(b, defs.get(b.id, {}), _building_actor_flags(b))
+	for key in building_actors.keys():
+		if alive_keys.has(key):
+			continue
+		building_actors[key].queue_free()
+		building_actors.erase(key)
+
+func _building_uses_scene_actor(b: Dictionary) -> bool:
+	return not _building_uses_tilemap(b)
+
+func _building_uses_tilemap(b: Dictionary) -> bool:
+	return _is_belt_building(b)
+
+func _building_actor_flags(b: Dictionary) -> Dictionary:
+	var recipe := _factory_recipe(b) if _is_factory_id(b.id) else {}
+	return {
+		"is_drill": _is_drill_id(b.id),
+		"is_factory": _is_factory_id(b.id),
+		"is_ammo_turret": _is_ammo_turret_id(b.id),
+		"is_fluid_turret": _is_fluid_turret_id(b.id),
+		"craft_time": float(recipe.get("craft_time", 1.8)),
+	}
 
 func _building_center(b: Dictionary) -> Vector2:
 	return BuildingRuntime.center(b, TILE)
@@ -1293,9 +1476,21 @@ func _try_emit_to_target(target: Dictionary, kind: String) -> bool:
 		var b = buildings.get(target.cell)
 		if b == null:
 			return false
-		items.append({"kind": kind, "cell": target.cell, "progress": 0.05, "dir": _belt_output_dir_for_entry(b, target.outward_dir)})
+		items.append(_make_belt_item(kind, target.cell, _belt_output_dir_for_entry(b, target.outward_dir), (target.outward_dir + 2) % 4))
 		return true
 	return false
+
+func _make_belt_item(kind: String, cell: Vector2i, dir: int, entry_dir: int) -> Dictionary:
+	var item := {
+		"runtime_id": next_item_runtime_id,
+		"kind": kind,
+		"cell": cell,
+		"progress": 0.05,
+		"dir": dir,
+		"entry_dir": entry_dir,
+	}
+	next_item_runtime_id += 1
+	return item
 
 func _valid_output_targets(cell: Vector2i, kind: String, source := {}) -> Array[Dictionary]:
 	var targets: Array[Dictionary] = []
@@ -1308,7 +1503,7 @@ func _valid_output_targets(cell: Vector2i, kind: String, source := {}) -> Array[
 				var b = buildings.get(np)
 				if b != null and _is_belt_building(b) and _belt_can_be_output_from_source(b, dir_index):
 					targets.append({"type": "belt", "cell": np, "outward_dir": dir_index})
-				elif b != null and _deliver_item_to_building_would_accept(b, kind):
+				elif b != null and _deliver_item_to_building_can_accept(b, kind):
 					targets.append({"type": "building", "cell": np, "building": b})
 	else:
 		for dir_index in range(DIRS.size()):
@@ -1316,7 +1511,7 @@ func _valid_output_targets(cell: Vector2i, kind: String, source := {}) -> Array[
 			var b = buildings.get(np)
 			if b != null and _is_belt_building(b) and _belt_can_be_output_from_source(b, dir_index):
 				targets.append({"type": "belt", "cell": np, "outward_dir": dir_index})
-			elif b != null and _deliver_item_to_building_would_accept(b, kind):
+			elif b != null and _deliver_item_to_building_can_accept(b, kind):
 				targets.append({"type": "building", "cell": np, "building": b})
 	if _touches_core(cell):
 		targets.append({"type": "core", "cell": CORE_POS})
@@ -1380,6 +1575,7 @@ func _update_items(delta: float) -> void:
 		var nb = buildings.get(next)
 		if nb != null and _is_belt_building(nb) and _belt_item_count(next) < BELT_CAPACITY:
 			item.cell = next
+			item.entry_dir = (dir + 2) % 4
 			if nb.id != "cross":
 				item.dir = nb.rot
 			i += 1
@@ -1388,12 +1584,42 @@ func _update_items(delta: float) -> void:
 		else:
 			item.progress = 1.0
 			i += 1
+	_sync_item_actors()
+
+func _sync_item_actors() -> void:
+	if item_actor_root == null:
+		return
+	var stack_slots := _item_stack_slots()
+	var alive_ids := {}
+	for item_index in range(items.size()):
+		var item = items[item_index]
+		if not item.has("runtime_id"):
+			item.runtime_id = next_item_runtime_id
+			next_item_runtime_id += 1
+		var id := int(item.runtime_id)
+		alive_ids[id] = true
+		var actor = item_actors.get(id)
+		if actor == null:
+			actor = ConveyorItemActorScene.instantiate()
+			item_actor_root.add_child(actor)
+			item_actors[id] = actor
+		var stack_data: Dictionary = stack_slots.get(item_index, {})
+		var pos := _item_visual_pos(item, int(stack_data.get("slot", 0)), bool(stack_data.get("backed_up", false)))
+		actor.sync_from(pos, _item_color(String(item.kind)))
+	for id in item_actors.keys():
+		if alive_ids.has(id):
+			continue
+		item_actors[id].queue_free()
+		item_actors.erase(id)
 
 func _deliver_item_to_building(b: Dictionary, kind: String) -> bool:
 	return BuildingStore.deliver_item(defs, b, kind, _xp_value(kind))
 
 func _deliver_item_to_building_would_accept(b: Dictionary, kind: String) -> bool:
 	return BuildingRules.item_delivery_would_accept(defs, b, kind, _xp_value(kind))
+
+func _deliver_item_to_building_can_accept(b: Dictionary, kind: String) -> bool:
+	return BuildingStore.can_deliver_item(defs, b, kind, _xp_value(kind))
 
 func _building_item_capacity(b: Dictionary, kind: String) -> int:
 	return BuildingRules.building_item_capacity(defs, b, kind)
@@ -1522,7 +1748,13 @@ func _spawn_enemy(kind: String) -> void:
 func _make_enemy(kind: String, pos: Vector2) -> Dictionary:
 	# EnemyRuntime.make_enemy computes both normal and fallback paths.
 	lag_pathfinding_calls += 2
-	return EnemyRuntime.make_enemy(enemy_defs, kind, pos, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
+	return _assign_enemy_runtime_id(EnemyRuntime.make_enemy(enemy_defs, kind, pos, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs))
+
+func _assign_enemy_runtime_id(e: Dictionary) -> Dictionary:
+	if not e.has("runtime_id"):
+		e.runtime_id = next_enemy_runtime_id
+		next_enemy_runtime_id += 1
+	return e
 
 func _update_enemies(delta: float) -> void:
 	pending_enemy_spawns.clear()
@@ -1541,6 +1773,30 @@ func _update_enemies(delta: float) -> void:
 	for child in pending_enemy_spawns:
 		enemies.append(child)
 	pending_enemy_spawns.clear()
+	_sync_enemy_actors()
+
+func _sync_enemy_actors() -> void:
+	if enemy_actor_root == null:
+		return
+	var alive_ids := {}
+	for e in enemies:
+		if e.hp <= 0.0:
+			continue
+		_assign_enemy_runtime_id(e)
+		var id := int(e.runtime_id)
+		alive_ids[id] = true
+		var actor = enemy_actors.get(id)
+		if actor == null:
+			actor = EnemyActorScene.instantiate()
+			enemy_actor_root.add_child(actor)
+			enemy_actors[id] = actor
+		var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
+		actor.sync_from(e, def, enemy_sheets, anim_time)
+	for id in enemy_actors.keys():
+		if alive_ids.has(id):
+			continue
+		enemy_actors[id].queue_free()
+		enemy_actors.erase(id)
 
 # Effective move speed: enraged archetypes surge once their HP threshold is crossed.
 func _enemy_speed(e: Dictionary, def: Dictionary) -> float:
@@ -1595,7 +1851,7 @@ func _update_enemy_effects(delta: float) -> void:
 func _enemy_on_death(e: Dictionary) -> void:
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
 	for child in EnemyLifecycle.on_death_spawns(e, def, enemy_defs, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs):
-		pending_enemy_spawns.append(child)
+		pending_enemy_spawns.append(_assign_enemy_runtime_id(child))
 
 func _update_enemy_path(e: Dictionary) -> void:
 	var delta := get_process_delta_time()
@@ -1645,7 +1901,7 @@ func _apply_enemy_events(events: Dictionary) -> void:
 	for child in events.get("spawns", []):
 		# These children were already created by EnemyRuntime, which pathfinds at spawn time.
 		lag_pathfinding_calls += 2
-		pending_enemy_spawns.append(child)
+		pending_enemy_spawns.append(_assign_enemy_runtime_id(child))
 	for p in events.get("projectiles", []):
 		projectiles.append(p)
 	var avatar_damage := float(events.get("avatar_damage", 0.0))
@@ -1716,8 +1972,10 @@ func _apply_projectile_events(events: Dictionary) -> void:
 		_detonate_splash(splash.pos, float(splash.radius), float(splash.damage))
 
 func _shoot_at(world_pos: Vector2) -> void:
-	if player_alive:
+	# Rate-limited so neither holding nor spam-clicking exceeds the fire interval.
+	if player_alive and player_fire_cd <= 0.0:
 		_projectile(player_pos, world_pos, 18.0, 520.0, "player")
+		player_fire_cd = PLAYER_FIRE_INTERVAL
 
 func _projectile(from_pos: Vector2, to_pos: Vector2, damage: float, speed: float, team := "player", spread := 0.0, extra: Dictionary = {}) -> void:
 	var dir = (to_pos - from_pos).normalized()
@@ -1750,6 +2008,8 @@ func _delete_at(cell: Vector2i) -> void:
 func _remove_building(b: Dictionary) -> void:
 	for p in _cells(b.pos, b.size):
 		buildings.erase(p)
+	_sync_building_actors()
+	_repaint_conveyor_tile_layer()
 
 func _draw() -> void:
 	_draw_world()
@@ -1757,24 +2017,14 @@ func _draw() -> void:
 	_draw_preview()
 
 func _draw_world() -> void:
-	# Only the organic tiles each opened chunk owns are drawn; everything else is
-	# implicit rock (void), so the explored frontier reads as a natural coastline.
-	for cc in open_chunks:
-		var tiles: Array = chunk_meta[cc].get("tiles", [])
-		for pv in tiles:
-			lag_draw_work += 1
-			var p: Vector2i = pv
-			var r := Rect2(Vector2(p * TILE), Vector2(TILE, TILE))
-			draw_rect(r, _terrain_color(String(terrain.get(p, "rock"))))
-			if ore.has(p):
-				draw_circle(r.get_center(), 10, _item_color(String(ore[p])))
-			draw_rect(r, Color(0, 0, 0, 0.18), false, 1)
 	var seen = {}
 	for b in buildings.values():
 		var key = _building_key(b)
 		if seen.has(key):
 			continue
 		seen[key] = true
+		if _building_uses_scene_actor(b) or _building_uses_tilemap(b):
+			continue
 		lag_draw_work += 1
 		_draw_building(b, false)
 	for bp in blueprints:
@@ -1790,11 +2040,6 @@ func _draw_world() -> void:
 	for bolt in lightning_bolts:
 		lag_draw_work += 1
 		_draw_lightning_bolt(bolt.from, bolt.to)
-	for item in items:
-		lag_draw_work += 1
-		var dir = item.dir
-		var pos = _cell_center(item.cell) + Vector2(DIRS[dir]) * ((item.progress - 0.5) * TILE)
-		draw_circle(pos, 5, _item_color(String(item.kind)))
 	for l in liquids:
 		lag_draw_work += 1
 		var pos = _cell_center(l.cell) + Vector2(DIRS[l.dir]) * ((l.progress - 0.5) * TILE)
@@ -1802,9 +2047,6 @@ func _draw_world() -> void:
 	for tg in enemy_telegraphs:
 		lag_draw_work += 1
 		_draw_telegraph(tg)
-	for e in enemies:
-		lag_draw_work += 1
-		_draw_enemy(e)
 	for fx in enemy_effects:
 		lag_draw_work += 1
 		_draw_effect(fx)
@@ -1850,6 +2092,51 @@ func _draw_world() -> void:
 		else:
 			draw_circle(player_pos, 13, Color(0.35, 0.45, 0.55, 0.35))
 
+func _item_stack_slots() -> Dictionary:
+	var groups: Dictionary = {}
+	for i in range(items.size()):
+		var item = items[i]
+		var key := _item_lane_key(item)
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(i)
+	var slots: Dictionary = {}
+	for key in groups.keys():
+		var group: Array = groups[key]
+		group.sort_custom(func(a, b):
+			var pa := float(items[int(a)].get("progress", 0.0))
+			var pb := float(items[int(b)].get("progress", 0.0))
+			if is_equal_approx(pa, pb):
+				return int(a) < int(b)
+			return pa > pb
+		)
+		var backed_up := false
+		if not group.is_empty():
+			backed_up = float(items[int(group[0])].get("progress", 0.0)) >= 0.999
+		for slot in range(group.size()):
+			slots[int(group[slot])] = {"slot": slot, "backed_up": backed_up}
+	return slots
+
+func _item_lane_key(item: Dictionary) -> String:
+	var cell: Vector2i = item.get("cell", Vector2i.ZERO)
+	var dir := int(item.get("dir", 0))
+	return "%d,%d:%d" % [cell.x, cell.y, dir]
+
+func _item_visual_pos(item: Dictionary, stack_slot: int, backed_up: bool) -> Vector2:
+	var cell: Vector2i = item.get("cell", Vector2i.ZERO)
+	var dir := int(item.get("dir", 0))
+	var entry_dir := int(item.get("entry_dir", (dir + 2) % 4))
+	var progress := clampf(float(item.get("progress", 0.0)), 0.0, 1.0)
+	if backed_up:
+		var slot_limit := maxf(0.18, 1.0 - float(stack_slot) * ITEM_STACK_VISUAL_SPACING)
+		progress = minf(progress, slot_limit)
+	var center := _cell_center(cell)
+	var input_edge := center + Vector2(DIRS[entry_dir]) * (TILE * 0.48)
+	var output_edge := center + Vector2(DIRS[dir]) * (TILE * 0.48)
+	if progress < 0.5:
+		return input_edge.lerp(center, progress * 2.0)
+	return center.lerp(output_edge, (progress - 0.5) * 2.0)
+
 func _terrain_color(t: String) -> Color:
 	match t:
 		"stone": return Color("#68705f")
@@ -1860,12 +2147,6 @@ func _terrain_color(t: String) -> Color:
 		"geode": return Color("#7d5ba6")
 		"spawn": return Color("#94393f")
 		_: return Color("#586454")
-
-# --- Enemy rendering: sprite walk-frames with procedural silhouette fallback ---
-
-func _draw_enemy(e: Dictionary) -> void:
-	var edef: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	EnemyDrawing.draw_enemy(self, e, edef, enemy_sheets, anim_time)
 
 func _draw_telegraph(tg: Dictionary) -> void:
 	EnemyDrawing.draw_telegraph(self, tg)
@@ -2041,7 +2322,8 @@ func _building_can_output_to(b: Dictionary, target: Vector2i) -> bool:
 	return false
 
 func _draw_range() -> void:
-	draw_arc(player_pos, BUILD_RANGE, 0, TAU, 96, Color(0.7, 0.9, 1.0, 0.22), 2)
+	# Build-range circle around whichever avatar is active (drone or VS hero).
+	draw_arc(_active_avatar_pos(), BUILD_RANGE, 0, TAU, 96, Color(0.7, 0.9, 1.0, 0.22), 2)
 
 func _draw_preview() -> void:
 	if selected == "" or _mouse_over_ui():
@@ -2050,7 +2332,7 @@ func _draw_preview() -> void:
 		var ok = _can_place(selected, c)
 		var rect = Rect2(Vector2(c * TILE), Vector2(defs[selected].size * TILE))
 		var col = Color(0.25, 1.0, 0.55, 0.35) if ok else Color(1.0, 0.15, 0.15, 0.35)
-		if ok and _cell_center(c).distance_to(player_pos) > BUILD_RANGE:
+		if ok and _cell_center(c).distance_to(_active_avatar_pos()) > BUILD_RANGE:
 			col = Color(0.7, 0.7, 0.7, 0.45)
 		draw_rect(rect, col)
 		if _is_belt_id(selected) or selected == "pipe":
@@ -2158,13 +2440,26 @@ func _restart() -> void:
 	terrain.clear()
 	ore.clear()
 	buildings.clear()
+	for actor in building_actors.values():
+		actor.queue_free()
+	building_actors.clear()
+	_repaint_conveyor_tile_layer()
 	blueprints.clear()
 	items.clear()
+	for actor in item_actors.values():
+		actor.queue_free()
+	item_actors.clear()
+	next_item_runtime_id = 1
 	enemies.clear()
+	for actor in enemy_actors.values():
+		actor.queue_free()
+	enemy_actors.clear()
+	next_enemy_runtime_id = 1
 	projectiles.clear()
 	liquids.clear()
 	inventory = TEST_STARTING_RESOURCES.duplicate()
-	player_pos = Vector2(30 * TILE, 28 * TILE)
+	player_pos = _cell_center(CORE_POS + Vector2i(1, 4))
+	hero_pos = player_pos
 	player_health = PLAYER_MAX_HEALTH
 	player_respawn = 0.0
 	player_alive = true

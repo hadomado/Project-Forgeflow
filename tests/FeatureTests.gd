@@ -108,14 +108,16 @@ func _test_vs_class_switch_preserves_state() -> void:
 func _test_vs_hero_respawn_scales_with_level() -> void:
 	var game = _new_game()
 	game.vs_level = 1
-	_assert_eq(game._hero_respawn_time(), 4.0, "Level 1 respawn should be 2 + 2*1 = 4s.")
+	_assert_eq(game._hero_respawn_time(), 1.0, "Level 1 respawn should be 1s per level = 1s.")
 	game.vs_level = 3
-	_assert_eq(game._hero_respawn_time(), 8.0, "Level 3 respawn should be 2 + 2*3 = 8s.")
+	_assert_eq(game._hero_respawn_time(), 3.0, "Level 3 respawn should be 1s per level = 3s.")
+	game.vs_level = 30
+	_assert_eq(game._hero_respawn_time(), 20.0, "Respawn should cap at 20s.")
 	game.vs_level = 2
 	game.hero_health = 10.0
 	game._damage_hero(999.0)
 	_assert_true(not game.hero_alive, "Hero should die when health hits 0.")
-	_assert_eq(game.hero_respawn, 6.0, "Dead hero should queue a 2+2*2 = 6s respawn.")
+	_assert_eq(game.hero_respawn, 2.0, "Dead hero should queue a 1s*2 = 2s respawn.")
 	game._update_hero(6.0)
 	_assert_true(game.hero_alive, "Hero should revive after the respawn timer elapses.")
 	_assert_eq(game.hero_health, game.VS_HERO_MAX_HEALTH, "Revived hero should be at full health.")

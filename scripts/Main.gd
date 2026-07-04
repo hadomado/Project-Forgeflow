@@ -11,6 +11,7 @@ const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
 const Grid = preload("res://scripts/shared/Grid.gd")
+const InventoryHelper = preload("res://scripts/shared/Inventory.gd")
 
 const TILE = 32
 const MAP_W = 60
@@ -2583,17 +2584,10 @@ func _cell_in_rect(p: Vector2i, pos: Vector2i, size: Vector2i) -> bool:
 	return p.x >= pos.x and p.x < pos.x + size.x and p.y >= pos.y and p.y < pos.y + size.y
 
 func _can_afford(cost: Dictionary) -> bool:
-	for k in cost:
-		if inventory.get(k, 0) < cost[k]:
-			return false
-	return true
+	return InventoryHelper.can_afford(inventory, cost)
 
 func _pay(cost: Dictionary) -> void:
-	for k in cost:
-		inventory[k] = inventory.get(k, 0) - cost[k]
+	InventoryHelper.pay(inventory, cost)
 
 func _cost_text(cost: Dictionary) -> String:
-	var bits: Array[String] = []
-	for k in cost:
-		bits.append("%s %s" % [cost[k], String(k).capitalize()])
-	return ", ".join(bits)
+	return InventoryHelper.cost_text(cost)

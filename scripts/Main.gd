@@ -3,6 +3,7 @@ extends Node2D
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
+const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 
 const TILE = 32
 const MAP_W = 60
@@ -154,62 +155,12 @@ func _load_enemy_art() -> void:
 			fx_sheets[pair[0]] = t
 
 func _generate_level() -> void:
-	for y in MAP_H:
-		for x in MAP_W:
-			var p = Vector2i(x, y)
-			terrain[p] = "ground"
-			if randf() < 0.08:
-				terrain[p] = "stone"
-	for x in range(0, MAP_W):
-		terrain[Vector2i(x, 0)] = "rock"
-		terrain[Vector2i(x, MAP_H - 1)] = "rock"
-	for y in range(0, MAP_H):
-		terrain[Vector2i(0, y)] = "rock"
-		terrain[Vector2i(MAP_W - 1, y)] = "rock"
-	for p in _disc(Vector2i(23, 25), 4):
-		ore[p] = "copper"
-	for p in _disc(Vector2i(36, 20), 4):
-		ore[p] = "coal"
-	for p in _disc(Vector2i(18, 14), 3):
-		ore[p] = "copper"
-	for p in _disc(Vector2i(13, 26), 3):
-		ore[p] = "lead"
-	for p in _disc(Vector2i(47, 19), 3):
-		ore[p] = "titanium"
-	for p in _disc(Vector2i(50, 31), 3):
-		ore[p] = "thorium"
-	for p in _disc(Vector2i(43, 29), 4):
-		if _inside(p):
-			terrain[p] = "water"
-	for p in _disc(Vector2i(38, 12), 5):
-		if _inside(p):
-			terrain[p] = "sand"
-	for p in _disc(Vector2i(9, 31), 3):
-		if _inside(p):
-			terrain[p] = "sand"
-	for p in _disc(Vector2i(51, 8), 3):
-		if _inside(p):
-			terrain[p] = "magma"
-	for x in range(5, 16):
-		terrain[Vector2i(x, 7)] = "rock"
-	for y in range(6, 15):
-		terrain[Vector2i(15, y)] = "rock"
-	for p in _disc(Vector2i(48, 12), 4):
-		if _inside(p) and p.x < 53:
-			terrain[p] = "rock"
-	for p in _disc(Vector2i(34, 34), 3):
-		if _inside(p):
-			terrain[p] = "rock"
-	terrain[Vector2i(5, 5)] = "spawn"
-	_cleanup_ore_in_natural_walls()
+	var level: Dictionary = MapGenerator.generate(MAP_W, MAP_H)
+	terrain = level["terrain"]
+	ore = level["ore"]
 
 func _cleanup_ore_in_natural_walls() -> void:
-	var to_remove: Array[Vector2i] = []
-	for p in ore.keys():
-		if terrain.get(p, "rock") == "rock":
-			to_remove.append(p)
-	for p in to_remove:
-		ore.erase(p)
+	MapGenerator.cleanup_ore_in_natural_walls(terrain, ore)
 
 func _is_belt_id(id: String) -> bool:
 	return defs.get(id, {}).has("belt_speed") or id == "cross"

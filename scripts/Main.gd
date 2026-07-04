@@ -3,6 +3,7 @@ extends Node2D
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const BuildingRules = preload("res://scripts/buildings/BuildingRules.gd")
+const BuildingStore = preload("res://scripts/buildings/BuildingStore.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
@@ -1420,13 +1421,13 @@ func _belt_item_count(cell: Vector2i) -> int:
 	return count
 
 func _add_store(b: Dictionary, kind: String, amount: int) -> void:
-	b.store[kind] = b.store.get(kind, 0) + amount
+	BuildingStore.add(b, kind, amount)
 
 func _take_store(b: Dictionary, kind: String, amount: int) -> void:
-	b.store[kind] = max(0, b.store.get(kind, 0) - amount)
+	BuildingStore.take(b, kind, amount)
 
 func _store_count(b: Dictionary, kind: String) -> int:
-	return int(b.store.get(kind, 0))
+	return BuildingStore.count(b, kind)
 
 func _flush_output_store(b: Dictionary, kind: String) -> void:
 	if _store_count(b, kind) <= 0:

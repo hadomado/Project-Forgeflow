@@ -1,5 +1,7 @@
 extends Node2D
 
+const GameData = preload("res://scripts/shared/GameData.gd")
+
 const TILE = 32
 const MAP_W = 60
 const MAP_H = 40
@@ -35,17 +37,7 @@ const ORBIT_SPEED := 3.4
 const ORBIT_BLADE_HIT := 18.0
 const ORBIT_MAX_BLADES := 8
 
-var build_categories: Array[Dictionary] = [
-	{"id": "turrets", "name": "Turrets"},
-	{"id": "belts", "name": "Belts"},
-	{"id": "drills", "name": "Drills"},
-	{"id": "fluids", "name": "Fluids"},
-	{"id": "power", "name": "Power"},
-	{"id": "walls", "name": "Walls"},
-	{"id": "factories", "name": "Factories"},
-	{"id": "combat", "name": "Combat"},
-	{"id": "misc", "name": "Misc"}
-]
+var build_categories: Array[Dictionary] = GameData.build_categories()
 
 var terrain = {}
 var ore = {}
@@ -123,21 +115,8 @@ var fx_sheets: Dictionary = {}                   # effect key -> Texture2D
 var enemy_effects: Array[Dictionary] = []        # transient hit/burst/slam anims
 var enemy_telegraphs: Array[Dictionary] = []     # aim-line / shockwave warnings to draw
 var pending_enemy_spawns: Array[Dictionary] = [] # spawner/on-death buffer, flushed post-iteration
-var ore_tiers = {"copper": 1, "coal": 1, "sand": 1, "lead": 2, "titanium": 3, "thorium": 4}
-var ore_colors = {
-	"copper": Color("#c98d39"),
-	"coal": Color("#424247"),
-	"lead": Color("#94a0bf"),
-	"titanium": Color("#70d6cf"),
-	"thorium": Color("#d884d8"),
-	"graphite": Color("#8ea0ad"),
-	"water": Color("#69c9e8"),
-	"sand": Color("#d9c27a"),
-	"silicon": Color("#d7dbe5"),
-	"oil": Color("#26242f"),
-	"plastinium": Color("#b5e08c"),
-	"pyrite": Color("#f09a38")
-}
+var ore_tiers: Dictionary = GameData.ore_tiers()
+var ore_colors: Dictionary = GameData.ore_colors()
 
 var defs = {
 	"core": {"name": "Core", "size": CORE_SIZE, "cost": {}, "category": "misc", "power_storage": 100.0},
@@ -253,17 +232,8 @@ var enemy_defs = {
 	"overseer": {"name": "Overseer", "hp": 420.0, "speed": 34.0, "range": 300.0, "fire_rate": 1.3, "damage": 26.0, "bullet_speed": 400.0, "spread": 0.05, "color": Color("#5a2f8a"), "radius": 22.0, "sheet": "boss_seed", "shape": "blob", "heal_aura": {"rate": 6.0, "radius": 200.0}, "spawner": {"kind": "wraith", "count": 1, "interval": 7.0, "max": 4}, "enrage": {"hp": 0.4, "speed": 1.35, "damage": 1.4, "fire": 0.7}}
 }
 
-var spell_defs = {
-	"arc_bolt": {"name": "Arc Bolt", "kind": "projectile", "cooldown": 1.1, "damage": 16.0, "range": 260.0, "bullet_speed": 460.0},
-	"orbiting_blades": {"name": "Orbiting Blades", "kind": "orbit", "cooldown": 0.25, "damage": 9.0, "radius": 46.0},
-	"pulse_nova": {"name": "Pulse Nova", "kind": "nova", "cooldown": 2.2, "damage": 24.0, "radius": 120.0}
-}
-var upgrade_defs = {
-	"swiftness": {"name": "Swiftness", "desc": "+12% move speed", "max": 4},
-	"lodestone": {"name": "Lodestone", "desc": "+25% magnet radius", "max": 4},
-	"rapid_casting": {"name": "Rapid Casting", "desc": "-10% spell cooldowns", "max": 4},
-	"vitality": {"name": "Vitality", "desc": "+25 max health", "max": 4}
-}
+var spell_defs: Dictionary = GameData.spell_defs()
+var upgrade_defs: Dictionary = GameData.upgrade_defs()
 
 func _ready() -> void:
 	randomize()

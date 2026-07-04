@@ -1455,58 +1455,8 @@ func _enemy_speed(e: Dictionary, def: Dictionary) -> float:
 
 # Per-enemy signature mechanics. Runs before shooting/movement each frame.
 func _update_enemy_mechanics(e: Dictionary, def: Dictionary, delta: float) -> void:
-	e.hit_flash = max(float(e.get("hit_flash", 0.0)) - delta, 0.0)
-	e.invuln = max(float(e.get("invuln", 0.0)) - delta, 0.0)
-	e.spawn_anim = min(float(e.get("spawn_anim", 0.0)) + delta * 3.5, 1.0)
-	# Enrage: latch on once HP drops past the threshold.
-	if def.has("enrage") and not e.get("enraged", false):
-		if e.hp <= float(e.max_hp) * float(def.enrage.get("hp", 0.5)):
-			e.enraged = true
-			_spawn_effect("burst", e.pos, float(def.get("radius", 13.0)) * 1.2, Color("#ff7a33"))
-	var target := _enemy_target(e)
-	# Blink: teleport toward the target and phase (brief invulnerability).
-	if def.has("blink"):
-		e.blink_timer = float(e.get("blink_timer", 0.0)) - delta
-		if e.blink_timer <= 0.0 and not target.is_empty():
-			e.blink_timer = float(def.blink.interval)
-			var bdir: Vector2 = (Vector2(target.pos) - e.pos).normalized()
-			var from: Vector2 = e.pos
-			var dest: Vector2 = e.pos + bdir * float(def.blink.dist)
-			if _enemy_tile_passable(_world_cell(dest), true):
-				e.pos = dest
-			e.invuln = float(def.blink.get("invuln", 0.4))
-			_spawn_telegraph({"type": "blink", "from": from, "to": e.pos, "color": def.color, "life": 0.3, "max_life": 0.3})
-	# Leap: charge a burst of velocity toward the target for a short window.
-	if def.has("leap") and float(e.get("leap_left", 0.0)) <= 0.0:
-		e.leap_timer = float(e.get("leap_timer", 0.0)) - delta
-		if e.leap_timer <= 0.0 and not target.is_empty():
-			e.leap_timer = float(def.leap.interval)
-			var ldir: Vector2 = (Vector2(target.pos) - e.pos).normalized()
-			e.leap_vel = ldir * float(def.leap.speed)
-			e.leap_left = float(def.leap.dur)
-	# Slam: pound the ground when the avatar is close, shockwaving nearby avatar.
-	if def.has("slam"):
-		e.slam_timer = float(e.get("slam_timer", 0.0)) - delta
-		if e.slam_timer <= 0.0 and _active_avatar_alive() and e.pos.distance_to(_active_avatar_pos()) <= float(def.slam.radius):
-			e.slam_timer = float(def.slam.interval)
-			_spawn_telegraph({"type": "blast", "pos": e.pos, "radius": float(def.slam.radius), "life": 0.35, "max_life": 0.35, "color": def.color})
-			if _active_avatar_pos().distance_to(e.pos) <= float(def.slam.radius):
-				_damage_active_avatar(float(def.slam.damage))
-	# Spawner: bud reinforcements up to a cap while alive.
-	if def.has("spawner") and int(e.get("spawn_made", 0)) < int(def.spawner.get("max", 999)):
-		e.spawn_timer = float(e.get("spawn_timer", 0.0)) - delta
-		if e.spawn_timer <= 0.0:
-			e.spawn_timer = float(def.spawner.interval)
-			var n := int(def.spawner.get("count", 1))
-			for k in n:
-				var jitter := Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
-				pending_enemy_spawns.append(_make_enemy(String(def.spawner.kind), e.pos + jitter))
-			e.spawn_made = int(e.get("spawn_made", 0)) + n
-			_spawn_effect("burst", e.pos, float(def.get("radius", 14.0)) * 1.2, def.color)
-	# Melee kamikaze: no gun; grind the avatar down at contact range.
-	if def.has("melee") and _active_avatar_alive():
-		if e.pos.distance_to(_active_avatar_pos()) <= float(def.get("radius", 8.0)) + float(def.melee.get("reach", 18.0)):
-			_damage_active_avatar(float(def.melee.dps) * delta)
+	var events := EnemyRuntime.update_mechanics(e, def, delta, enemy_defs, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs, _active_avatar_alive(), _active_avatar_pos())
+	_apply_enemy_events(events)
 
 # Heal nearby living enemies (support units) up to their max HP.
 func _enemy_heal_aura(healer: Dictionary, aura: Dictionary, delta: float) -> void:
@@ -1584,52 +1534,24 @@ func _enemy_target(e: Dictionary) -> Dictionary:
 
 func _enemy_shoot(e: Dictionary, delta: float) -> void:
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	if def.has("melee"):
-		return  # kamikaze units have no ranged weapon
-	if def.has("charged_shot"):
-		_enemy_charged_shot(e, def, delta)
-		return
-	e.shot_timer = e.get("shot_timer", 0.0) - delta
-	if e.shot_timer > 0.0:
-		return
-	var target = _enemy_target(e)
-	if target.is_empty():
-		return
-	var fire_mult := 1.0
-	var dmg_mult := 1.0
-	if e.get("enraged", false) and def.has("enrage"):
-		fire_mult = float(def.enrage.get("fire", 1.0))
-		dmg_mult = float(def.enrage.get("damage", 1.0))
-	e.shot_timer = float(def.fire_rate) * fire_mult
-	var extra := {}
-	if def.has("splash"):
-		extra["splash"] = float(def.splash.radius)
-	_projectile(e.pos, target.pos, float(def.damage) * dmg_mult, float(def.bullet_speed), "enemy", float(def.spread), extra)
+	_apply_enemy_events(EnemyRuntime.update_shooting(e, def, delta, buildings, _active_avatar_alive(), _active_avatar_pos(), TILE, CORE_POS))
 
 # Marksman-style wind-up: telegraph an aim line, then release one piercing bolt.
 func _enemy_charged_shot(e: Dictionary, def: Dictionary, delta: float) -> void:
-	var cs: Dictionary = def.charged_shot
-	if e.get("charging", false):
-		var tgt := _enemy_target(e)
-		if not tgt.is_empty():
-			e.charge_aim = tgt.pos
-		e.charge_left = float(e.get("charge_left", 0.0)) - delta
-		if e.charge_left <= 0.0:
-			e.charging = false
-			e.shot_timer = float(def.fire_rate)
-			var aim: Vector2 = e.get("charge_aim", e.pos + Vector2(e.facing) * 240.0)
-			_projectile(e.pos, aim, float(cs.damage), float(cs.bullet_speed), "enemy", 0.0, {"pierce": cs.get("pierce", false), "heavy": true})
-			_spawn_effect("burst", e.pos, float(def.get("radius", 12.0)) * 1.0, def.color)
-		return
-	e.shot_timer = float(e.get("shot_timer", 0.0)) - delta
-	if e.shot_timer > 0.0:
-		return
-	var target := _enemy_target(e)
-	if target.is_empty():
-		return
-	e.charging = true
-	e.charge_left = float(cs.get("charge", 0.8))
-	e.charge_aim = target.pos
+	_apply_enemy_events(EnemyRuntime.update_charged_shot(e, def, delta, buildings, _active_avatar_alive(), _active_avatar_pos(), TILE, CORE_POS))
+
+func _apply_enemy_events(events: Dictionary) -> void:
+	for fx in events.get("effects", []):
+		enemy_effects.append(fx)
+	for telegraph in events.get("telegraphs", []):
+		enemy_telegraphs.append(telegraph)
+	for child in events.get("spawns", []):
+		pending_enemy_spawns.append(child)
+	for p in events.get("projectiles", []):
+		projectiles.append(p)
+	var avatar_damage := float(events.get("avatar_damage", 0.0))
+	if avatar_damage > 0.0:
+		_damage_active_avatar(avatar_damage)
 
 func _enemy_attack_building(e: Dictionary, b: Dictionary, delta: float) -> void:
 	e.attack = e.get("attack", 0.0) + delta

@@ -162,6 +162,106 @@ static func heal_aura(enemies: Array[Dictionary], healer: Dictionary, aura: Dict
 		var cap: float = float(other.get("max_hp", other.hp))
 		other.hp = min(other.hp + amount, cap)
 
+static func update_mechanics(e: Dictionary, def: Dictionary, delta: float, enemy_defs: Dictionary, wave: int, tile_size: int, core_pos: Vector2i, terrain: Dictionary, buildings: Dictionary, map_w: int, map_h: int, building_defs: Dictionary, active_avatar_alive: bool, active_avatar_pos: Vector2) -> Dictionary:
+	var events := {"effects": [], "telegraphs": [], "spawns": [], "avatar_damage": 0.0}
+	e.hit_flash = max(float(e.get("hit_flash", 0.0)) - delta, 0.0)
+	e.invuln = max(float(e.get("invuln", 0.0)) - delta, 0.0)
+	e.spawn_anim = min(float(e.get("spawn_anim", 0.0)) + delta * 3.5, 1.0)
+	if def.has("enrage") and not e.get("enraged", false):
+		if e.hp <= float(e.max_hp) * float(def.enrage.get("hp", 0.5)):
+			e.enraged = true
+			events.effects.append(effect("burst", e.pos, float(def.get("radius", 13.0)) * 1.2, Color("#ff7a33")))
+	var current_target := target(e, def, buildings, active_avatar_alive, active_avatar_pos, tile_size, core_pos)
+	if def.has("blink"):
+		e.blink_timer = float(e.get("blink_timer", 0.0)) - delta
+		if e.blink_timer <= 0.0 and not current_target.is_empty():
+			e.blink_timer = float(def.blink.interval)
+			var bdir: Vector2 = (Vector2(current_target.pos) - Vector2(e.pos)).normalized()
+			var from: Vector2 = e.pos
+			var dest: Vector2 = Vector2(e.pos) + bdir * float(def.blink.dist)
+			if tile_passable(Grid.world_cell(dest, tile_size), true, terrain, buildings, map_w, map_h, core_pos, building_defs):
+				e.pos = dest
+			e.invuln = float(def.blink.get("invuln", 0.4))
+			events.telegraphs.append({"type": "blink", "from": from, "to": e.pos, "color": def.color, "life": 0.3, "max_life": 0.3})
+	if def.has("leap") and float(e.get("leap_left", 0.0)) <= 0.0:
+		e.leap_timer = float(e.get("leap_timer", 0.0)) - delta
+		if e.leap_timer <= 0.0 and not current_target.is_empty():
+			e.leap_timer = float(def.leap.interval)
+			var ldir: Vector2 = (Vector2(current_target.pos) - Vector2(e.pos)).normalized()
+			e.leap_vel = ldir * float(def.leap.speed)
+			e.leap_left = float(def.leap.dur)
+	if def.has("slam"):
+		e.slam_timer = float(e.get("slam_timer", 0.0)) - delta
+		if e.slam_timer <= 0.0 and active_avatar_alive and Vector2(e.pos).distance_to(active_avatar_pos) <= float(def.slam.radius):
+			e.slam_timer = float(def.slam.interval)
+			events.telegraphs.append({"type": "blast", "pos": e.pos, "radius": float(def.slam.radius), "life": 0.35, "max_life": 0.35, "color": def.color})
+			if active_avatar_pos.distance_to(e.pos) <= float(def.slam.radius):
+				events.avatar_damage += float(def.slam.damage)
+	if def.has("spawner") and int(e.get("spawn_made", 0)) < int(def.spawner.get("max", 999)):
+		e.spawn_timer = float(e.get("spawn_timer", 0.0)) - delta
+		if e.spawn_timer <= 0.0:
+			e.spawn_timer = float(def.spawner.interval)
+			var n := int(def.spawner.get("count", 1))
+			for k in n:
+				var jitter := Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
+				events.spawns.append(make_enemy(enemy_defs, String(def.spawner.kind), Vector2(e.pos) + jitter, wave, tile_size, core_pos, terrain, buildings, map_w, map_h, building_defs))
+			e.spawn_made = int(e.get("spawn_made", 0)) + n
+			events.effects.append(effect("burst", e.pos, float(def.get("radius", 14.0)) * 1.2, def.color))
+	if def.has("melee") and active_avatar_alive:
+		if Vector2(e.pos).distance_to(active_avatar_pos) <= float(def.get("radius", 8.0)) + float(def.melee.get("reach", 18.0)):
+			events.avatar_damage += float(def.melee.dps) * delta
+	return events
+
+static func update_shooting(e: Dictionary, def: Dictionary, delta: float, buildings: Dictionary, active_avatar_alive: bool, active_avatar_pos: Vector2, tile_size: int, core_pos: Vector2i) -> Dictionary:
+	var events := {"effects": [], "projectiles": []}
+	if def.has("melee"):
+		return events
+	if def.has("charged_shot"):
+		return update_charged_shot(e, def, delta, buildings, active_avatar_alive, active_avatar_pos, tile_size, core_pos)
+	e.shot_timer = e.get("shot_timer", 0.0) - delta
+	if e.shot_timer > 0.0:
+		return events
+	var current_target := target(e, def, buildings, active_avatar_alive, active_avatar_pos, tile_size, core_pos)
+	if current_target.is_empty():
+		return events
+	var fire_mult := 1.0
+	var dmg_mult := 1.0
+	if e.get("enraged", false) and def.has("enrage"):
+		fire_mult = float(def.enrage.get("fire", 1.0))
+		dmg_mult = float(def.enrage.get("damage", 1.0))
+	e.shot_timer = float(def.fire_rate) * fire_mult
+	var extra := {}
+	if def.has("splash"):
+		extra["splash"] = float(def.splash.radius)
+	events.projectiles.append(projectile(e.pos, current_target.pos, float(def.damage) * dmg_mult, float(def.bullet_speed), "enemy", float(def.spread), extra))
+	return events
+
+static func update_charged_shot(e: Dictionary, def: Dictionary, delta: float, buildings: Dictionary, active_avatar_alive: bool, active_avatar_pos: Vector2, tile_size: int, core_pos: Vector2i) -> Dictionary:
+	var events := {"effects": [], "projectiles": []}
+	var cs: Dictionary = def.charged_shot
+	if e.get("charging", false):
+		var tgt := target(e, def, buildings, active_avatar_alive, active_avatar_pos, tile_size, core_pos)
+		if not tgt.is_empty():
+			e.charge_aim = tgt.pos
+		e.charge_left = float(e.get("charge_left", 0.0)) - delta
+		if e.charge_left <= 0.0:
+			e.charging = false
+			e.shot_timer = float(def.fire_rate)
+			var aim: Vector2 = e.get("charge_aim", Vector2(e.pos) + Vector2(e.facing) * 240.0)
+			events.projectiles.append(projectile(e.pos, aim, float(cs.damage), float(cs.bullet_speed), "enemy", 0.0, {"pierce": cs.get("pierce", false), "heavy": true}))
+			events.effects.append(effect("burst", e.pos, float(def.get("radius", 12.0)) * 1.0, def.color))
+		return events
+	e.shot_timer = float(e.get("shot_timer", 0.0)) - delta
+	if e.shot_timer > 0.0:
+		return events
+	var current_target := target(e, def, buildings, active_avatar_alive, active_avatar_pos, tile_size, core_pos)
+	if current_target.is_empty():
+		return events
+	e.charging = true
+	e.charge_left = float(cs.get("charge", 0.8))
+	e.charge_aim = current_target.pos
+	return events
+
 static func damage_enemy(e: Dictionary, def: Dictionary, amount: float, opts: Dictionary = {}) -> Array[Dictionary]:
 	var effects: Array[Dictionary] = []
 	if amount <= 0.0 or e.hp <= 0.0:
@@ -193,6 +293,15 @@ static func damage_enemy(e: Dictionary, def: Dictionary, amount: float, opts: Di
 
 static func effect(kind: String, pos: Vector2, rad: float = 12.0, color: Color = Color(1, 1, 1)) -> Dictionary:
 	return {"kind": kind, "pos": pos, "t": 0.0, "dur": 0.42, "scale": rad, "color": color}
+
+static func projectile(from_pos: Vector2, to_pos: Vector2, damage: float, speed_value: float, team := "player", spread := 0.0, extra: Dictionary = {}) -> Dictionary:
+	var dir := (to_pos - from_pos).normalized()
+	if spread > 0.0:
+		dir = dir.rotated(randf_range(-spread, spread))
+	var proj := {"pos": from_pos, "vel": dir * speed_value, "damage": damage, "life": 1.6, "team": team}
+	for k in extra:
+		proj[k] = extra[k]
+	return proj
 
 static func update_effects(effects: Array[Dictionary], telegraphs: Array[Dictionary], delta: float) -> void:
 	var i := 0

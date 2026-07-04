@@ -12,6 +12,7 @@ const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const EnemyRuntime = preload("res://scripts/enemies/EnemyRuntime.gd")
 const EnemyDrawing = preload("res://scripts/enemies/EnemyDrawing.gd")
+const EnemyLifecycle = preload("res://scripts/enemies/EnemyLifecycle.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
@@ -1369,35 +1370,30 @@ func _update_liquids(delta: float) -> void:
 			liquids.remove_at(i)
 
 func _update_waves(delta: float) -> void:
-	if wave >= MAX_WAVE and enemies.is_empty() and spawn_left <= 0:
+	var state := EnemyLifecycle.update_waves(wave, wave_timer, spawn_left, spawn_cooldown, MAX_WAVE, TEST_WAVE_TIMER, enemies.is_empty(), delta)
+	_apply_wave_state(state)
+	if bool(state.get("won", false)):
 		won = true
 		restart_button.visible = true
 		return
-	if spawn_left <= 0 and enemies.is_empty():
-		wave_timer -= delta
-		if wave_timer <= 0.0:
-			_start_next_wave()
-	if spawn_left > 0:
-		spawn_cooldown -= delta
-		if spawn_cooldown <= 0.0:
-			spawn_cooldown = 1.1
-			spawn_left -= 1
-			_spawn_enemy(_enemy_kind_for_wave())
+	var spawn_kind := String(state.get("spawn_kind", ""))
+	if spawn_kind != "":
+		_spawn_enemy(spawn_kind)
 
 func _force_next_wave() -> void:
-	if won or lost or wave >= MAX_WAVE:
-		return
-	if spawn_left <= 0 and enemies.is_empty():
-		_start_next_wave()
+	_apply_wave_state(EnemyLifecycle.force_next_wave(wave, wave_timer, spawn_left, spawn_cooldown, MAX_WAVE, TEST_WAVE_TIMER, enemies.is_empty(), won, lost))
 
 func _start_next_wave() -> void:
-	wave += 1
-	spawn_left = 2 + wave * 2
-	spawn_cooldown = 0.1
-	wave_timer = TEST_WAVE_TIMER
+	_apply_wave_state(EnemyLifecycle.start_next_wave(wave, TEST_WAVE_TIMER))
 
 func _enemy_kind_for_wave() -> String:
-	return WaveData.enemy_kind_for_wave(wave, MAX_WAVE)
+	return EnemyLifecycle.enemy_kind_for_wave(wave, MAX_WAVE)
+
+func _apply_wave_state(state: Dictionary) -> void:
+	wave = int(state.get("wave", wave))
+	wave_timer = float(state.get("wave_timer", wave_timer))
+	spawn_left = int(state.get("spawn_left", spawn_left))
+	spawn_cooldown = float(state.get("spawn_cooldown", spawn_cooldown))
 
 func _spawn_enemy(kind: String) -> void:
 	enemies.append(_make_enemy(kind, _cell_center(Vector2i(5, 5))))
@@ -1436,15 +1432,7 @@ func _update_enemies(delta: float) -> void:
 		if core_health <= 0.0:
 			lost = true
 			restart_button.visible = true
-	var i = 0
-	while i < enemies.size():
-		if enemies[i].hp <= 0.0:
-			_drop_orbs(enemies[i].pos, _orb_drop_count(enemies[i].kind))
-			_spawn_effect("burst", enemies[i].pos, float(enemy_defs.get(enemies[i].kind, enemy_defs.grunt).get("radius", 12.0)) * 1.5, enemy_defs.get(enemies[i].kind, enemy_defs.grunt).color)
-			_enemy_on_death(enemies[i])
-			enemies.remove_at(i)
-		else:
-			i += 1
+	_apply_enemy_lifecycle_events(EnemyLifecycle.cleanup_dead(enemies, enemy_defs, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs))
 	# Flush spawner / on-death children after iteration to avoid mutating mid-loop.
 	for child in pending_enemy_spawns:
 		enemies.append(child)
@@ -1502,14 +1490,8 @@ func _update_enemy_effects(delta: float) -> void:
 # Brood-style enemies burst into smaller spawns when they die.
 func _enemy_on_death(e: Dictionary) -> void:
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	if not def.has("on_death_spawn"):
-		return
-	var spawn: Dictionary = def.on_death_spawn
-	var kind: String = String(spawn.get("kind", "swarmling"))
-	var count: int = int(spawn.get("count", 0))
-	for n in count:
-		var jitter := Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))
-		pending_enemy_spawns.append(_make_enemy(kind, e.pos + jitter))
+	for child in EnemyLifecycle.on_death_spawns(e, def, enemy_defs, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs):
+		pending_enemy_spawns.append(child)
 
 func _update_enemy_path(e: Dictionary) -> void:
 	EnemyRuntime.update_path(e, get_process_delta_time(), TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
@@ -1553,6 +1535,11 @@ func _apply_enemy_events(events: Dictionary) -> void:
 	var avatar_damage := float(events.get("avatar_damage", 0.0))
 	if avatar_damage > 0.0:
 		_damage_active_avatar(avatar_damage)
+
+func _apply_enemy_lifecycle_events(events: Dictionary) -> void:
+	for death in events.get("deaths", []):
+		_drop_orbs(death.pos, _orb_drop_count(death.kind))
+	_apply_enemy_events(events)
 
 func _enemy_attack_building(e: Dictionary, b: Dictionary, delta: float) -> void:
 	e.attack = e.get("attack", 0.0) + delta

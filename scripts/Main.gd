@@ -3,6 +3,7 @@ extends Node2D
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
+const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
@@ -147,15 +148,9 @@ func _ready() -> void:
 # Load the CC0 factory-defense walk/effect sprite sheets once. Missing files are
 # tolerated: `_draw_world` falls back to procedural silhouettes per enemy shape.
 func _load_enemy_art() -> void:
-	var base := "res://assets/cc0_factory_defense_pack/art/"
-	for key in ["scout", "crawler", "runner", "bruiser", "boss_seed"]:
-		var tex = load(base + "enemies/%s_walk_sheet.png" % key)
-		if tex != null:
-			enemy_sheets[key] = tex
-	for pair in [["hit", "small_hit_sheet"], ["burst", "ore_burst_sheet"], ["core", "core_damage_sheet"]]:
-		var t = load(base + "effects/%s.png" % pair[1])
-		if t != null:
-			fx_sheets[pair[0]] = t
+	var sheets := EnemyArt.load_sheets()
+	enemy_sheets = sheets["enemy_sheets"]
+	fx_sheets = sheets["fx_sheets"]
 
 func _generate_level() -> void:
 	var level: Dictionary = MapGenerator.generate(MAP_W, MAP_H)

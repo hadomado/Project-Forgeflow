@@ -206,23 +206,10 @@ func _recipe_inputs(recipe: Dictionary) -> Dictionary:
 	return BuildingRules.recipe_inputs(recipe)
 
 func _factory_has_inputs(b: Dictionary, recipe: Dictionary) -> bool:
-	var inputs := _recipe_inputs(recipe)
-	for kind in inputs:
-		if _store_count(b, String(kind)) < int(inputs[kind]):
-			return false
-	var liquid_input: Dictionary = recipe.get("liquid_input", {})
-	if not liquid_input.is_empty():
-		if _store_count(b, String(liquid_input.get("kind", ""))) < int(liquid_input.get("amount", 1)):
-			return false
-	return true
+	return BuildingStore.factory_has_inputs(b, recipe)
 
 func _take_factory_inputs(b: Dictionary, recipe: Dictionary) -> void:
-	var inputs := _recipe_inputs(recipe)
-	for kind in inputs:
-		_take_store(b, String(kind), int(inputs[kind]))
-	var liquid_input: Dictionary = recipe.get("liquid_input", {})
-	if not liquid_input.is_empty():
-		_take_store(b, String(liquid_input.get("kind", "")), int(liquid_input.get("amount", 1)))
+	BuildingStore.take_factory_inputs(b, recipe)
 
 func _drill_output_kind(b: Dictionary) -> String:
 	return BuildingRules.drill_output_kind(terrain, ore, b)

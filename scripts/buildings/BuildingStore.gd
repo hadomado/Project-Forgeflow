@@ -57,3 +57,24 @@ static func deliver_liquid(defs: Dictionary, b: Dictionary, kind: String) -> boo
 		return false
 	add(b, kind, 1)
 	return true
+
+static func factory_has_inputs(b: Dictionary, recipe: Dictionary) -> bool:
+	var inputs := BuildingRules.recipe_inputs(recipe)
+	for kind in inputs:
+		if count(b, String(kind)) < int(inputs[kind]):
+			return false
+	var liquid_input: Dictionary = recipe.get("liquid_input", {})
+	if not liquid_input.is_empty():
+		var liquid_kind := String(liquid_input.get("kind", ""))
+		if count(b, liquid_kind) < int(liquid_input.get("amount", 1)):
+			return false
+	return true
+
+static func take_factory_inputs(b: Dictionary, recipe: Dictionary) -> void:
+	var inputs := BuildingRules.recipe_inputs(recipe)
+	for kind in inputs:
+		take(b, String(kind), int(inputs[kind]))
+	var liquid_input: Dictionary = recipe.get("liquid_input", {})
+	if not liquid_input.is_empty():
+		var liquid_kind := String(liquid_input.get("kind", ""))
+		take(b, liquid_kind, int(liquid_input.get("amount", 1)))

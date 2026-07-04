@@ -66,6 +66,37 @@ static func recipe_inputs(recipe: Dictionary) -> Dictionary:
 		return {}
 	return {input_kind: int(recipe.get("input_amount", 1))}
 
+static func building_item_capacity(defs: Dictionary, b: Dictionary, kind: String) -> int:
+	if is_factory_id(defs, b.id):
+		var recipe = factory_recipe(defs, b)
+		if recipe_inputs(recipe).has(kind):
+			return 10
+		var liquid_input: Dictionary = recipe.get("liquid_input", {})
+		if kind == String(liquid_input.get("kind", "")):
+			return 8
+		if kind == String(recipe.get("output", "")):
+			return 12
+	if b.id == "generator" and kind == "coal":
+		return 12
+	if is_ammo_turret_id(defs, b.id):
+		return 3
+	if b.id == "xp_sink":
+		return 20
+	return 999
+
+static func building_liquid_capacity(defs: Dictionary, b: Dictionary, kind: String) -> int:
+	if not accepts_liquid(defs, b, kind):
+		return 0
+	if is_fluid_turret_id(defs, b.id):
+		return 12
+	if is_drill_id(defs, b.id):
+		return 8
+	if is_ammo_turret_id(defs, b.id):
+		return 12
+	if is_factory_id(defs, b.id):
+		return 8
+	return 0
+
 static func drill_output_kind(terrain: Dictionary, ore: Dictionary, b: Dictionary) -> String:
 	if ore.has(b.pos):
 		return String(ore[b.pos])

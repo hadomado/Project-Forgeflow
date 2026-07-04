@@ -1347,22 +1347,7 @@ func _deliver_item_to_building_would_accept(b: Dictionary, kind: String) -> bool
 	return false
 
 func _building_item_capacity(b: Dictionary, kind: String) -> int:
-	if _is_factory_id(b.id):
-		var recipe = _factory_recipe(b)
-		if _recipe_inputs(recipe).has(kind):
-			return 10
-		var liquid_input: Dictionary = recipe.get("liquid_input", {})
-		if kind == String(liquid_input.get("kind", "")):
-			return 8
-		if kind == String(recipe.get("output", "")):
-			return 12
-	if b.id == "generator" and kind == "coal":
-		return 12
-	if _is_ammo_turret_id(b.id):
-		return 3
-	if b.id == "xp_sink":
-		return 20
-	return 999
+	return BuildingRules.building_item_capacity(defs, b, kind)
 
 func _deliver_liquid_to_building(b: Dictionary, kind: String) -> bool:
 	if not _accepts_liquid(b, kind):
@@ -1373,17 +1358,7 @@ func _deliver_liquid_to_building(b: Dictionary, kind: String) -> bool:
 	return true
 
 func _building_liquid_capacity(b: Dictionary, kind: String) -> int:
-	if not _accepts_liquid(b, kind):
-		return 0
-	if _is_fluid_turret_id(b.id):
-		return 12
-	if _is_drill_id(b.id):
-		return 8
-	if _is_ammo_turret_id(b.id):
-		return 12
-	if _is_factory_id(b.id):
-		return 8
-	return 0
+	return BuildingRules.building_liquid_capacity(defs, b, kind)
 
 func _turret_ammo_types(b: Dictionary) -> Array:
 	return BuildingStore.turret_ammo_types(defs, b)

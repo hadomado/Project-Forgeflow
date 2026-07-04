@@ -84,6 +84,17 @@ static func building_item_capacity(defs: Dictionary, b: Dictionary, kind: String
 		return 20
 	return 999
 
+static func item_delivery_would_accept(defs: Dictionary, b: Dictionary, kind: String, xp_value: int) -> bool:
+	if b.id == "generator" and kind == "coal":
+		return true
+	if is_factory_id(defs, b.id) and recipe_inputs(factory_recipe(defs, b)).has(kind):
+		return true
+	if is_ammo_turret_id(defs, b.id) and kind in defs.get(b.id, {}).get("ammo_types", []):
+		return true
+	if b.id == "xp_sink" and xp_value > 0:
+		return true
+	return false
+
 static func building_liquid_capacity(defs: Dictionary, b: Dictionary, kind: String) -> int:
 	if not accepts_liquid(defs, b, kind):
 		return 0

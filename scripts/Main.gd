@@ -1330,15 +1330,7 @@ func _deliver_item_to_building(b: Dictionary, kind: String) -> bool:
 	return false
 
 func _deliver_item_to_building_would_accept(b: Dictionary, kind: String) -> bool:
-	if b.id == "generator" and kind == "coal":
-		return true
-	if _is_factory_id(b.id) and _recipe_inputs(_factory_recipe(b)).has(kind):
-		return true
-	if _is_ammo_turret_id(b.id) and kind in _turret_ammo_types(b):
-		return true
-	if b.id == "xp_sink" and _xp_value(kind) > 0:
-		return true
-	return false
+	return BuildingRules.item_delivery_would_accept(defs, b, kind, _xp_value(kind))
 
 func _building_item_capacity(b: Dictionary, kind: String) -> int:
 	return BuildingRules.building_item_capacity(defs, b, kind)

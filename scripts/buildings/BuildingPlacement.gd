@@ -26,7 +26,7 @@ static func can_place(
 		if place_on != "":
 			if t != place_on:
 				return false
-		elif t == "water" or t == "rock" or t == "magma":
+		elif t == "water" or t == "rock" or t == "magma" or t == "geode":
 			return false
 		var existing = buildings.get(p)
 		if existing != null:

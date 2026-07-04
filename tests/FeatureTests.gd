@@ -59,6 +59,12 @@ func run_feature_tests() -> bool:
 	_test_sand_magma_and_new_block_defs()
 	_test_new_factories_and_fluid_chain()
 	_test_new_turrets_fire_with_required_inputs()
+	_test_base_turret_accepts_default_ammo()
+	_test_world_starts_with_one_chunk()
+	_test_map_expands_every_five_waves()
+	_test_only_furthest_chunks_spawn_enemies()
+	_test_ore_deposits_have_geode_cores()
+	_test_sand_and_magma_generate_in_terrain()
 	return failures.is_empty()
 
 func _new_game() -> Node2D:
@@ -307,20 +313,37 @@ func _test_vs_spell_visuals_and_orbit() -> void:
 
 func _test_natural_walls_clean_ore_and_block_enemy() -> void:
 	var game = _new_game()
-	var rock_cell = Vector2i(6, 7)
-	game.ore[rock_cell] = "copper"
+	# Geodes are the new ore-core natural walls: they behave exactly like rock.
+	var geode_cell = game.SPAWN_ORIGIN + Vector2i(5, 5)
+	game.terrain[geode_cell] = "geode"
+	game.ore[geode_cell] = "copper"
 	game._cleanup_ore_in_natural_walls()
-	_assert_true(not game.ore.has(rock_cell), "Ore on natural walls should be removed.")
-	_assert_true(not game._can_place("wall", rock_cell), "Buildings should not place on natural walls.")
-	_assert_true(not game._enemy_tile_passable(rock_cell, false), "Enemies should not pass natural walls.")
+	_assert_true(not game.ore.has(geode_cell), "Ore on natural walls (geodes) should be removed.")
+	_assert_true(not game._can_place("wall", geode_cell), "Buildings should not place on geodes.")
+	_assert_true(not game._enemy_tile_passable(geode_cell, false), "Enemies should not pass geodes.")
+	# A plain rock cell is still a natural wall too.
+	var rock_cell = game.SPAWN_ORIGIN + Vector2i(6, 6)
+	game.terrain[rock_cell] = "rock"
+	_assert_true(not game._enemy_tile_passable(rock_cell, false), "Enemies should not pass rock.")
 	_finish_game(game)
 
 func _test_pathfinding_respects_and_ignores_player_blocks() -> void:
 	var game = _new_game()
-	for y in range(1, 39):
-		game._add_building("wall", Vector2i(8, y), 0, true)
-	var blocked_path: Array[Vector2i] = game._find_enemy_path(Vector2i(7, 5), Vector2i(9, 5), false)
-	var fallback_path: Array[Vector2i] = game._find_enemy_path(Vector2i(7, 5), Vector2i(9, 5), true)
+	# Build a self-contained arena: a rock-walled box (natural walls seal it from
+	# the surrounding organic terrain) split by a full-height player-wall column.
+	var o = game.SPAWN_ORIGIN
+	var c = game.CHUNK
+	for y in range(0, c):
+		for x in range(0, c):
+			var edge: bool = x == 0 or y == 0 or x == c - 1 or y == c - 1
+			game.terrain[o + Vector2i(x, y)] = "rock" if edge else "ground"
+	var wall_x = 5
+	for y in range(1, c - 1):
+		game._add_building("wall", o + Vector2i(wall_x, y), 0, true)
+	var start = o + Vector2i(wall_x - 2, 6)
+	var goal = o + Vector2i(wall_x + 2, 6)
+	var blocked_path: Array[Vector2i] = game._find_enemy_path(start, goal, false)
+	var fallback_path: Array[Vector2i] = game._find_enemy_path(start, goal, true)
 	_assert_true(blocked_path.is_empty(), "Full wall line should block normal enemy pathing.")
 	_assert_true(not fallback_path.is_empty(), "Fallback path should ignore player walls.")
 	_finish_game(game)
@@ -545,6 +568,10 @@ func _test_progression_defs_include_new_ores_and_tiers() -> void:
 
 func _test_generated_level_contains_new_ore_tiers() -> void:
 	var game = _new_game()
+	# Higher tiers are biased into the further/newer chunks, so open the whole
+	# world before checking the ore mix.
+	while game._open_next_chunk():
+		pass
 	var counts := {"lead": 0, "titanium": 0, "thorium": 0}
 	for kind in game.ore.values():
 		if counts.has(kind):
@@ -556,12 +583,19 @@ func _test_generated_level_contains_new_ore_tiers() -> void:
 
 func _test_tiered_drills_respect_ore_hardness() -> void:
 	var game = _new_game()
-	game.ore[Vector2i(10, 10)] = "titanium"
-	game.ore[Vector2i(11, 10)] = "thorium"
-	_assert_true(not game._can_place("drill", Vector2i(10, 10)), "Base drill should not place on titanium.")
-	_assert_true(game._can_place("impact_drill", Vector2i(10, 10)), "Impact drill should place on titanium.")
-	_assert_true(not game._can_place("impact_drill", Vector2i(11, 10)), "Impact drill should not place on thorium.")
-	_assert_true(game._can_place("blast_drill", Vector2i(11, 10)), "Blast drill should place on thorium.")
+	var a = game.SPAWN_ORIGIN + Vector2i(3, 3)
+	var b = game.SPAWN_ORIGIN + Vector2i(5, 3)
+	# Clear the footprints so terrain never blocks the drill checks.
+	for p in game._cells(a - Vector2i(1, 1), Vector2i(4, 4)):
+		game.terrain[p] = "ground"
+	for p in game._cells(b - Vector2i(1, 1), Vector2i(4, 4)):
+		game.terrain[p] = "ground"
+	game.ore[a] = "titanium"
+	game.ore[b] = "thorium"
+	_assert_true(not game._can_place("drill", a), "Base drill should not place on titanium.")
+	_assert_true(game._can_place("impact_drill", a), "Impact drill should place on titanium.")
+	_assert_true(not game._can_place("impact_drill", b), "Impact drill should not place on thorium.")
+	_assert_true(game._can_place("blast_drill", b), "Blast drill should place on thorium.")
 	_finish_game(game)
 
 func _test_tiered_conveyors_move_items_at_different_speeds() -> void:
@@ -663,9 +697,12 @@ func _test_generator_requires_stored_coal() -> void:
 
 func _test_core_acts_as_power_battery() -> void:
 	var game = _new_game()
-	game._add_building("generator", Vector2i(24, 25), 0, true)
-	game._add_building("node", Vector2i(27, 25), 0, true)
-	var generator = game.buildings[Vector2i(24, 25)]
+	# Build next to the core (wherever the spawn chunk placed it) so the network connects.
+	var gen_cell = game.CORE_POS + Vector2i(-4, 0)
+	var node_cell = game.CORE_POS + Vector2i(-1, 0)
+	game._add_building("generator", gen_cell, 0, true)
+	game._add_building("node", node_cell, 0, true)
+	var generator = game.buildings[gen_cell]
 	var core = game.buildings[game.CORE_POS]
 	generator.fuel = 10.0
 	game._calculate_power_networks(1.0)
@@ -783,4 +820,85 @@ func _test_new_turrets_fire_with_required_inputs() -> void:
 	_assert_true(game._deliver_item_to_building(salvo, "copper"), "Salvo turret should accept copper ammo.")
 	game._update_buildings(1.0)
 	_assert_true(game.projectiles.size() > 0, "Salvo turret should fire item ammo.")
+	_finish_game(game)
+
+# Turrets that omit an explicit `ammo_types` list (turret, scatter_tower,
+# rail_tower) must still accept their default copper/graphite ammo. Regression:
+# delivery used an empty-array default while firing used copper/graphite.
+func _test_base_turret_accepts_default_ammo() -> void:
+	var game = _new_game()
+	for id in ["turret", "scatter_tower", "rail_tower"]:
+		var cell = game.CORE_POS + Vector2i(-6, 0)
+		game._add_building(id, cell, 0, true)
+		var b = game.buildings[cell]
+		_assert_true(game._deliver_item_to_building_would_accept(b, "copper"), "%s should accept copper ammo." % id)
+		_assert_true(game._deliver_item_to_building(b, "graphite"), "%s should take delivered graphite ammo." % id)
+		_assert_true(game._store_count(b, "graphite") > 0, "%s should store the ammo it accepted." % id)
+	_finish_game(game)
+
+# --- Chunked / expanding world ---------------------------------------------
+
+func _test_world_starts_with_one_chunk() -> void:
+	var game = _new_game()
+	_assert_eq(game.open_chunks.size(), 1, "The player should spawn with exactly one open chunk.")
+	# The core lives inside that spawn chunk and is reachable from its spawn point.
+	var spawn: Vector2i = game.chunk_meta[game.open_chunks[0]]["spawn"]
+	var path: Array[Vector2i] = game._find_enemy_path(spawn, game.CORE_POS, false)
+	_assert_true(not path.is_empty(), "Enemies must be able to path from the chunk spawn point to the core.")
+	_finish_game(game)
+
+func _test_map_expands_every_five_waves() -> void:
+	var game = _new_game()
+	_assert_eq(game.open_chunks.size(), 1, "World starts with one chunk.")
+	game.wave = 6  # five waves defeated
+	game._sync_open_chunks()
+	_assert_eq(game.open_chunks.size(), 2, "Defeating five waves should open a second chunk.")
+	game.wave = 11  # ten waves defeated
+	game._sync_open_chunks()
+	_assert_eq(game.open_chunks.size(), 3, "Every additional five waves should open another chunk.")
+	# Newly opened chunks sit further out (higher ring) than the spawn chunk.
+	var newest: Vector2i = game.open_chunks[game.open_chunks.size() - 1]
+	_assert_true(int(game.chunk_meta[newest]["ring"]) >= 1, "Expansion chunks should be further from the core.")
+	_finish_game(game)
+
+func _test_only_furthest_chunks_spawn_enemies() -> void:
+	var game = _new_game()
+	for i in 16:
+		game._open_next_chunk()
+	var tiles: Array[Vector2i] = game._active_spawn_tiles()
+	_assert_eq(tiles.size(), 10, "With more than ten open chunks, only the furthest ten spawn enemies.")
+	# Every active spawn tile must be a real, distinct chunk spawn point.
+	var unique := {}
+	for t in tiles:
+		unique[t] = true
+	_assert_eq(unique.size(), 10, "Active spawn points should be distinct.")
+	_finish_game(game)
+
+func _test_ore_deposits_have_geode_cores() -> void:
+	var game = _new_game()
+	while game._open_next_chunk():
+		pass
+	var geodes := 0
+	var geodes_in_ore := 0
+	for p in game.terrain:
+		if String(game.terrain[p]) == "geode":
+			geodes += 1
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if game.ore.has(p + d):
+					geodes_in_ore += 1
+					break
+	_assert_true(geodes > 0, "Ore deposits should generate geode cores.")
+	_assert_true(geodes_in_ore > 0, "Geodes should sit inside their ore deposit (ore around them).")
+	_finish_game(game)
+
+func _test_sand_and_magma_generate_in_terrain() -> void:
+	var game = _new_game()
+	while game._open_next_chunk():
+		pass
+	var kinds := {}
+	for p in game.terrain:
+		kinds[String(game.terrain[p])] = true
+	_assert_true(kinds.has("sand"), "Terrain generation should place sand.")
+	_assert_true(kinds.has("magma"), "Terrain generation should place magma.")
+	_assert_true(kinds.has("water"), "Terrain generation should place water.")
 	_finish_game(game)

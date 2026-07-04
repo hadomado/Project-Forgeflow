@@ -68,7 +68,8 @@ static func move_target(e: Dictionary, tile_size: int, core_pos: Vector2i) -> Ve
 static func tile_passable(cell: Vector2i, ignore_player_blocks: bool, terrain: Dictionary, buildings: Dictionary, map_w: int, map_h: int, core_pos: Vector2i, building_defs: Dictionary) -> bool:
 	if not Grid.inside(cell, map_w, map_h):
 		return false
-	if terrain.get(cell, "rock") == "rock":
+	var t: String = terrain.get(cell, "rock")
+	if t == "rock" or t == "geode":  # natural walls block movement
 		return false
 	if Grid.cell_in_rect(cell, core_pos, Vector2i(3, 3)):
 		return true

@@ -12,6 +12,12 @@ static func is_drill_id(defs: Dictionary, id: String) -> bool:
 static func is_ammo_turret_id(defs: Dictionary, id: String) -> bool:
 	return defs.get(id, {}).get("ammo_turret", false)
 
+# Canonical ammo-type list for a turret. Turrets that omit `ammo_types` fall back
+# to copper/graphite (their default bullet damage kinds). This is the single
+# source of truth so delivery and firing never disagree.
+static func turret_ammo_types(defs: Dictionary, b: Dictionary) -> Array:
+	return defs.get(b.id, {}).get("ammo_types", ["copper", "graphite"])
+
 static func is_fluid_turret_id(defs: Dictionary, id: String) -> bool:
 	return defs.get(id, {}).get("fluid_turret", false)
 
@@ -89,7 +95,7 @@ static func item_delivery_would_accept(defs: Dictionary, b: Dictionary, kind: St
 		return true
 	if is_factory_id(defs, b.id) and recipe_inputs(factory_recipe(defs, b)).has(kind):
 		return true
-	if is_ammo_turret_id(defs, b.id) and kind in defs.get(b.id, {}).get("ammo_types", []):
+	if is_ammo_turret_id(defs, b.id) and kind in turret_ammo_types(defs, b):
 		return true
 	if b.id == "xp_sink" and xp_value > 0:
 		return true

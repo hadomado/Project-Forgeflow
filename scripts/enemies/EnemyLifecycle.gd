@@ -4,10 +4,8 @@ const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const EnemyRuntime = preload("res://scripts/enemies/EnemyRuntime.gd")
 
 static func update_waves(wave: int, wave_timer: float, spawn_left: int, spawn_cooldown: float, max_wave: int, wave_delay: float, enemies_empty: bool, delta: float) -> Dictionary:
+	# Endless waves: there is no win cap. max_wave only gates the boss roster.
 	var state := {"wave": wave, "wave_timer": wave_timer, "spawn_left": spawn_left, "spawn_cooldown": spawn_cooldown, "won": false, "spawn_kind": ""}
-	if wave >= max_wave and enemies_empty and spawn_left <= 0:
-		state.won = true
-		return state
 	if spawn_left <= 0 and enemies_empty:
 		state.wave_timer = float(state.wave_timer) - delta
 		if float(state.wave_timer) <= 0.0:
@@ -22,7 +20,7 @@ static func update_waves(wave: int, wave_timer: float, spawn_left: int, spawn_co
 
 static func force_next_wave(wave: int, wave_timer: float, spawn_left: int, spawn_cooldown: float, max_wave: int, wave_delay: float, enemies_empty: bool, won: bool, lost: bool) -> Dictionary:
 	var state := {"wave": wave, "wave_timer": wave_timer, "spawn_left": spawn_left, "spawn_cooldown": spawn_cooldown, "started": false}
-	if won or lost or wave >= max_wave:
+	if won or lost:  # endless: no wave cap, only a loss ends the run
 		return state
 	if spawn_left <= 0 and enemies_empty:
 		_start_next_wave_state(state, wave_delay)

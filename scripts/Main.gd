@@ -21,10 +21,17 @@ const Grid = preload("res://scripts/shared/Grid.gd")
 const InventoryHelper = preload("res://scripts/shared/Inventory.gd")
 
 const TILE = 32
-const MAP_W = 60
-const MAP_H = 40
+# --- Chunked, expanding world ---
+const CHUNK = 24                                  # tiles per chunk side
+const MAX_RING = 5                                # furthest chunk ring from spawn
+const MAP_W = (2 * MAX_RING + 1) * CHUNK          # 264: max world bound (unopened = rock)
+const MAP_H = (2 * MAX_RING + 1) * CHUNK
+const SPAWN_CHUNK = Vector2i(MAX_RING, MAX_RING)  # centre chunk holds the core
+const SPAWN_ORIGIN = Vector2i(MAX_RING * CHUNK, MAX_RING * CHUNK)  # (120,120)
+const WAVES_PER_CHUNK = 5                         # defeat this many waves -> open a chunk
+const ACTIVE_SPAWN_CHUNKS = 10                    # only the furthest N chunks spawn enemies
 const BUILD_RANGE = 260.0
-const CORE_POS = Vector2i(28, 25)
+const CORE_POS = Vector2i(MAX_RING * CHUNK + 10, MAX_RING * CHUNK + 10)  # (130,130) chunk centre
 const CORE_SIZE = Vector2i(3, 3)
 const DIRS = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]
 const DIR_NAMES = ["E", "S", "W", "N"]
@@ -32,6 +39,8 @@ const BELT_CAPACITY = 3
 const TEST_STARTING_RESOURCES = {"copper": 999, "coal": 999, "graphite": 999, "lead": 999, "titanium": 999, "thorium": 999, "sand": 999, "silicon": 999, "plastinium": 999, "pyrite": 999, "water": 0}
 const TEST_CORE_HEALTH = 999.0
 const TEST_WAVE_TIMER = 999.0
+# Waves are now endless (no win cap). MAX_WAVE is only the threshold at which the
+# full enemy roster / boss becomes eligible in the spawn pool.
 const MAX_WAVE = 10
 const PLAYER_MAX_HEALTH = 100.0
 const PLAYER_RESPAWN_TIME = 2.0
@@ -59,6 +68,13 @@ var build_categories: Array[Dictionary] = GameData.build_categories()
 
 var terrain = {}
 var ore = {}
+# --- Chunk / expansion state ---
+var chunk_meta: Dictionary = {}         # chunk coord (Vector2i) -> generator metadata
+var open_chunks: Array[Vector2i] = []   # opened chunk coords, in open order
+var chunk_order: Array[Vector2i] = []   # spiral expansion order (spawn chunk first)
+var map_seed: int = 1337                # world seed; set before _generate_level to control the map (0 = random)
+var open_min: Vector2i = SPAWN_ORIGIN   # tile bounds of the opened area (for clamping/draw)
+var open_max: Vector2i = SPAWN_ORIGIN + Vector2i(CHUNK - 1, CHUNK - 1)
 var buildings = {}
 var blueprints: Array[Dictionary] = []
 var items: Array[Dictionary] = []
@@ -68,7 +84,7 @@ var liquids: Array[Dictionary] = []
 var inventory = TEST_STARTING_RESOURCES.duplicate()
 var selected = "conveyor"
 var build_rot = 0
-var player_pos = Vector2(30 * TILE, 28 * TILE)
+var player_pos = Vector2((CORE_POS.x + 1) * TILE + TILE * 0.5, (CORE_POS.y + 4) * TILE + TILE * 0.5)
 var player_vel = Vector2.ZERO
 var player_health = PLAYER_MAX_HEALTH
 var player_respawn = 0.0
@@ -87,6 +103,7 @@ var ui_root: CanvasLayer
 var res_label: Label
 var status_label: Label
 var info_label: Label
+var lag_label: Label
 var details_panel: PanelContainer
 var details_label: Label
 var restart_button: Button
@@ -108,7 +125,7 @@ var details_from_ui = false
 
 # --- VS: state ---
 var active_class: String = "factory"
-var hero_pos: Vector2 = Vector2(30 * TILE, 28 * TILE)
+var hero_pos: Vector2 = Vector2((CORE_POS.x + 1) * TILE + TILE * 0.5, (CORE_POS.y + 4) * TILE + TILE * 0.5)
 var hero_vel: Vector2 = Vector2.ZERO
 var hero_health: float = VS_HERO_MAX_HEALTH
 var hero_alive: bool = true
@@ -143,6 +160,14 @@ var enemy_defs: Dictionary = EnemyData.defs()
 var spell_defs: Dictionary = VSData.spell_defs()
 var upgrade_defs: Dictionary = VSData.upgrade_defs()
 
+# Lag source counters. These are monotonic so a live run can reveal which
+# suspected source is firing hardest before any optimization changes behavior.
+var lag_pathfinding_calls: int = 0
+var lag_power_network_work: int = 0
+var lag_logistics_work: int = 0
+var lag_projectile_collision_work: int = 0
+var lag_draw_work: int = 0
+
 func _ready() -> void:
 	randomize()
 	camera = Camera2D.new()
@@ -164,9 +189,91 @@ func _load_enemy_art() -> void:
 	fx_sheets = sheets["fx_sheets"]
 
 func _generate_level() -> void:
-	var level: Dictionary = MapGenerator.generate(MAP_W, MAP_H)
-	terrain = level["terrain"]
-	ore = level["ore"]
+	var world: Dictionary = MapGenerator.new_world({
+		"chunk": CHUNK,
+		"max_ring": MAX_RING,
+		"core_pos": CORE_POS,
+		"core_size": CORE_SIZE,
+		"seed": map_seed,
+	})
+	terrain = world["terrain"]
+	ore = world["ore"]
+	chunk_meta = world["chunks"]
+	chunk_order = world["order"]
+	map_seed = int(world["seed"])   # resolve a random (0) seed to the one actually used
+	open_chunks = [world["spawn_chunk"]]
+	_recalc_open_bounds()
+	player_pos = _cell_center(CORE_POS + Vector2i(1, 4))
+	hero_pos = player_pos
+
+# --- Chunk expansion -------------------------------------------------------
+
+# How many chunks should be open right now: the spawn chunk, plus one more for
+# every WAVES_PER_CHUNK waves the player has defeated.
+func _desired_open_chunks() -> int:
+	return 1 + maxi(0, wave - 1) / WAVES_PER_CHUNK
+
+# Open chunks until we reach the count the current wave count calls for.
+func _sync_open_chunks() -> void:
+	var target: int = mini(_desired_open_chunks(), chunk_order.size())
+	var changed := false
+	while open_chunks.size() < target and _open_next_chunk():
+		changed = true
+	if changed:
+		_recalc_open_bounds()
+		queue_redraw()
+
+# Open the next chunk in the spiral order. Returns false when the world is full.
+func _open_next_chunk() -> bool:
+	var idx := open_chunks.size()
+	if idx >= chunk_order.size():
+		return false
+	var cc: Vector2i = chunk_order[idx]
+	if chunk_meta.has(cc):
+		open_chunks.append(cc)
+		return true
+	var meta := MapGenerator.open_chunk(terrain, ore, cc, idx, {
+		"chunk": CHUNK,
+		"max_ring": MAX_RING,
+		"core_pos": CORE_POS,
+		"core_size": CORE_SIZE,
+		"seed": map_seed,
+	})
+	chunk_meta[cc] = meta
+	open_chunks.append(cc)
+	return true
+
+func _recalc_open_bounds() -> void:
+	if open_chunks.is_empty():
+		return
+	# Bounds follow the actual organic tiles each chunk owns, not its square.
+	var mn := CORE_POS
+	var mx := CORE_POS
+	for cc in open_chunks:
+		var tiles: Array = chunk_meta[cc].get("tiles", [])
+		for pv in tiles:
+			var p: Vector2i = pv
+			mn.x = mini(mn.x, p.x)
+			mn.y = mini(mn.y, p.y)
+			mx.x = maxi(mx.x, p.x)
+			mx.y = maxi(mx.y, p.y)
+	open_min = mn
+	open_max = mx
+
+# Enemy spawn tiles of the (up to ACTIVE_SPAWN_CHUNKS) furthest open chunks.
+func _active_spawn_tiles() -> Array[Vector2i]:
+	var ccs: Array[Vector2i] = open_chunks.duplicate()
+	ccs.sort_custom(func(a, b):
+		var ra := int(chunk_meta[a]["ring"])
+		var rb := int(chunk_meta[b]["ring"])
+		if ra == rb:
+			return int(chunk_meta[a]["index"]) > int(chunk_meta[b]["index"])
+		return ra > rb)
+	var tiles: Array[Vector2i] = []
+	for i in mini(ACTIVE_SPAWN_CHUNKS, ccs.size()):
+		var sp: Vector2i = chunk_meta[ccs[i]]["spawn"]
+		tiles.append(sp)
+	return tiles
 
 func _cleanup_ore_in_natural_walls() -> void:
 	MapGenerator.cleanup_ore_in_natural_walls(terrain, ore)
@@ -239,6 +346,10 @@ func _make_ui() -> void:
 	status_label.position = Vector2(14, 12)
 	status_label.add_theme_font_size_override("font_size", 18)
 	ui_root.add_child(status_label)
+	lag_label = Label.new()
+	lag_label.position = Vector2(14, 38)
+	lag_label.add_theme_font_size_override("font_size", 13)
+	ui_root.add_child(lag_label)
 	info_label = Label.new()
 	info_label.position = Vector2(14, 655)
 	info_label.add_theme_font_size_override("font_size", 15)
@@ -406,8 +517,8 @@ func _update_player(delta: float) -> void:
 	var move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	player_vel = player_vel.lerp(move * 245.0, 0.22)
 	player_pos += player_vel * delta
-	player_pos.x = clamp(player_pos.x, TILE, (MAP_W - 1) * TILE)
-	player_pos.y = clamp(player_pos.y, TILE, (MAP_H - 1) * TILE)
+	player_pos.x = clamp(player_pos.x, open_min.x * TILE, (open_max.x + 1) * TILE)
+	player_pos.y = clamp(player_pos.y, open_min.y * TILE, (open_max.y + 1) * TILE)
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("rotate_build"):
@@ -525,8 +636,8 @@ func _update_hero(delta: float) -> void:
 	var move = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	hero_vel = hero_vel.lerp(move * _hero_move_speed(), 0.22)
 	hero_pos += hero_vel * delta
-	hero_pos.x = clamp(hero_pos.x, TILE, (MAP_W - 1) * TILE)
-	hero_pos.y = clamp(hero_pos.y, TILE, (MAP_H - 1) * TILE)
+	hero_pos.x = clamp(hero_pos.x, open_min.x * TILE, (open_max.x + 1) * TILE)
+	hero_pos.y = clamp(hero_pos.y, open_min.y * TILE, (open_max.y + 1) * TILE)
 
 # --- VS: orbs ---
 func _orb_drop_count(kind: String) -> int:
@@ -888,6 +999,7 @@ func _power_key(b: Dictionary) -> String:
 	return BuildingRuntime.power_key(b)
 
 func _calculate_power_networks(delta: float) -> Dictionary:
+	lag_power_network_work += 1
 	var seen = {}
 	var all_buildings: Array[Dictionary] = []
 	for b in buildings.values():
@@ -915,11 +1027,13 @@ func _calculate_power_networks(delta: float) -> Dictionary:
 		node_links[i] = []
 	for i in range(nodes.size()):
 		for j in range(i + 1, nodes.size()):
+			lag_power_network_work += 1
 			var bridge = null
 			if Vector2(nodes[i].pos - nodes[j].pos).length() <= NODE_RANGE:
 				bridge = null
 			else:
 				for p in power_participants:
+					lag_power_network_work += 1
 					if _building_in_node_range(p, nodes[i]) and _building_in_node_range(p, nodes[j]):
 						bridge = p
 						break
@@ -960,6 +1074,7 @@ func _process_network(comp_nodes: Array[Dictionary], comp_edges: Array[Dictionar
 	for nb in comp_nodes:
 		nb.powered = true
 		for b in power_participants:
+			lag_power_network_work += 1
 			var participant_key = _building_key(b)
 			if participant_seen.has(participant_key):
 				continue
@@ -1239,6 +1354,7 @@ func _adjacent_output_cells(cell: Vector2i, source := {}) -> Array[Vector2i]:
 	return cells
 
 func _update_items(delta: float) -> void:
+	lag_logistics_work += items.size()
 	for item in items:
 		var belt = buildings.get(item.cell)
 		item.progress += delta * _belt_speed_for(belt if belt != null else {"id": "conveyor"})
@@ -1300,6 +1416,7 @@ func _take_turret_ammo(b: Dictionary) -> String:
 func _take_turret_liquid(b: Dictionary) -> String:
 	return BuildingStore.take_turret_liquid(defs, b)
 func _belt_item_count(cell: Vector2i) -> int:
+	lag_logistics_work += items.size()
 	var count = 0
 	for item in items:
 		if item.cell == cell:
@@ -1345,6 +1462,7 @@ func _emit_liquid_from_building(source: Dictionary, kind := "water") -> void:
 				return
 
 func _update_liquids(delta: float) -> void:
+	lag_logistics_work += liquids.size()
 	for l in liquids:
 		l.progress += delta * 1.8
 	var i = 0
@@ -1394,11 +1512,16 @@ func _apply_wave_state(state: Dictionary) -> void:
 	wave_timer = float(state.get("wave_timer", wave_timer))
 	spawn_left = int(state.get("spawn_left", spawn_left))
 	spawn_cooldown = float(state.get("spawn_cooldown", spawn_cooldown))
+	_sync_open_chunks()
 
 func _spawn_enemy(kind: String) -> void:
-	enemies.append(_make_enemy(kind, _cell_center(Vector2i(5, 5))))
+	var tiles := _active_spawn_tiles()
+	var tile: Vector2i = tiles[randi() % tiles.size()] if not tiles.is_empty() else CORE_POS
+	enemies.append(_make_enemy(kind, _cell_center(tile)))
 
 func _make_enemy(kind: String, pos: Vector2) -> Dictionary:
+	# EnemyRuntime.make_enemy computes both normal and fallback paths.
+	lag_pathfinding_calls += 2
 	return EnemyRuntime.make_enemy(enemy_defs, kind, pos, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
 
 func _update_enemies(delta: float) -> void:
@@ -1475,7 +1598,16 @@ func _enemy_on_death(e: Dictionary) -> void:
 		pending_enemy_spawns.append(child)
 
 func _update_enemy_path(e: Dictionary) -> void:
-	EnemyRuntime.update_path(e, get_process_delta_time(), TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
+	var delta := get_process_delta_time()
+	if _enemy_path_should_recompute(e, delta):
+		lag_pathfinding_calls += 2
+		if e.get("path", []).is_empty():
+			lag_pathfinding_calls += 1
+	EnemyRuntime.update_path(e, delta, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
+
+func _enemy_path_should_recompute(e: Dictionary, delta: float) -> bool:
+	var current := Grid.world_cell(e.pos, TILE)
+	return float(e.get("path_timer", 0.0)) - delta <= 0.0 or e.get("path", []).is_empty() or not e.path.has(current)
 
 func _enemy_move_target(e: Dictionary) -> Vector2:
 	return EnemyRuntime.move_target(e, TILE, CORE_POS)
@@ -1487,6 +1619,7 @@ func _enemy_blocking_building(cell: Vector2i) -> Variant:
 	return EnemyRuntime.blocking_building(cell, buildings, defs)
 
 func _find_enemy_path(start: Vector2i, goal: Vector2i, ignore_player_blocks: bool) -> Array[Vector2i]:
+	lag_pathfinding_calls += 1
 	return EnemyRuntime.find_path(start, goal, ignore_player_blocks, terrain, buildings, MAP_W, MAP_H, CORE_POS, defs)
 
 func _enemy_path_direction(e: Dictionary) -> Vector2:
@@ -1510,6 +1643,8 @@ func _apply_enemy_events(events: Dictionary) -> void:
 	for telegraph in events.get("telegraphs", []):
 		enemy_telegraphs.append(telegraph)
 	for child in events.get("spawns", []):
+		# These children were already created by EnemyRuntime, which pathfinds at spawn time.
+		lag_pathfinding_calls += 2
 		pending_enemy_spawns.append(child)
 	for p in events.get("projectiles", []):
 		projectiles.append(p)
@@ -1563,6 +1698,11 @@ func _damage_active_avatar(amount: float) -> void:
 		_damage_player(amount)
 
 func _update_projectiles(delta: float) -> void:
+	for p in projectiles:
+		if p.get("team", "player") == "player":
+			lag_projectile_collision_work += enemies.size()
+		else:
+			lag_projectile_collision_work += 1
 	_apply_projectile_events(EnemyRuntime.update_projectiles(projectiles, enemies, buildings, _active_avatar_alive(), _active_avatar_pos(), TILE, delta))
 
 func _apply_projectile_events(events: Dictionary) -> void:
@@ -1617,21 +1757,15 @@ func _draw() -> void:
 	_draw_preview()
 
 func _draw_world() -> void:
-	for y in MAP_H:
-		for x in MAP_W:
-			var p = Vector2i(x, y)
-			var r = Rect2(Vector2(p * TILE), Vector2(TILE, TILE))
-			var t: String = terrain[p]
-			var col = Color("#586454")
-			if t == "stone":
-				col = Color("#68705f")
-			elif t == "rock":
-				col = Color("#3d4248")
-			elif t == "water":
-				col = Color("#285f82")
-			elif t == "spawn":
-				col = Color("#94393f")
-			draw_rect(r, col)
+	# Only the organic tiles each opened chunk owns are drawn; everything else is
+	# implicit rock (void), so the explored frontier reads as a natural coastline.
+	for cc in open_chunks:
+		var tiles: Array = chunk_meta[cc].get("tiles", [])
+		for pv in tiles:
+			lag_draw_work += 1
+			var p: Vector2i = pv
+			var r := Rect2(Vector2(p * TILE), Vector2(TILE, TILE))
+			draw_rect(r, _terrain_color(String(terrain.get(p, "rock"))))
 			if ore.has(p):
 				draw_circle(r.get_center(), 10, _item_color(String(ore[p])))
 			draw_rect(r, Color(0, 0, 0, 0.18), false, 1)
@@ -1641,31 +1775,41 @@ func _draw_world() -> void:
 		if seen.has(key):
 			continue
 		seen[key] = true
+		lag_draw_work += 1
 		_draw_building(b, false)
 	for bp in blueprints:
+		lag_draw_work += 1
 		var ghost = _make_building(bp.id, bp.pos, bp.rot, false)
 		_draw_building(ghost, true)
 	for line in power_network_lines:
+		lag_draw_work += 1
 		if typeof(line) == TYPE_DICTIONARY:
 			draw_line(line["from"], line["to"], Color(0.96, 0.87, 0.32, 0.85), 2.0)
 		else:
 			draw_line(line[0], line[1], Color(0.96, 0.87, 0.32, 0.85), 2.0)
 	for bolt in lightning_bolts:
+		lag_draw_work += 1
 		_draw_lightning_bolt(bolt.from, bolt.to)
 	for item in items:
+		lag_draw_work += 1
 		var dir = item.dir
 		var pos = _cell_center(item.cell) + Vector2(DIRS[dir]) * ((item.progress - 0.5) * TILE)
 		draw_circle(pos, 5, _item_color(String(item.kind)))
 	for l in liquids:
+		lag_draw_work += 1
 		var pos = _cell_center(l.cell) + Vector2(DIRS[l.dir]) * ((l.progress - 0.5) * TILE)
 		draw_circle(pos, 5, Color("#69c9e8"))
 	for tg in enemy_telegraphs:
+		lag_draw_work += 1
 		_draw_telegraph(tg)
 	for e in enemies:
+		lag_draw_work += 1
 		_draw_enemy(e)
 	for fx in enemy_effects:
+		lag_draw_work += 1
 		_draw_effect(fx)
 	for p in projectiles:
+		lag_draw_work += 1
 		if p.get("spell", false):
 			draw_circle(p.pos, 8, Color(0.72, 0.55, 1.0, 0.35))
 			draw_circle(p.pos, 5, Color("#c9a6ff"))
@@ -1681,8 +1825,10 @@ func _draw_world() -> void:
 		else:
 			draw_circle(p.pos, 4, Color("#ff8068") if p.get("team", "player") == "enemy" else Color("#ffe07a"))
 	for orb in orbs:
+		lag_draw_work += 1
 		draw_circle(orb.pos, 4, Color("#4fa8ff"))
 	for pulse in nova_pulses:
+		lag_draw_work += 1
 		var pt: float = clamp(pulse.life / float(pulse.max_life), 0.0, 1.0)
 		draw_arc(pulse.pos, max(float(pulse.radius), 1.0), 0.0, TAU, 40, Color(0.66, 0.5, 1.0, 0.25 + 0.5 * pt), 4.0)
 	if _is_combat_class() and hero_alive:
@@ -1703,6 +1849,17 @@ func _draw_world() -> void:
 			draw_line(player_pos, player_pos + aim * 20.0, Color("#f5d76a"), 4)
 		else:
 			draw_circle(player_pos, 13, Color(0.35, 0.45, 0.55, 0.35))
+
+func _terrain_color(t: String) -> Color:
+	match t:
+		"stone": return Color("#68705f")
+		"rock": return Color("#3d4248")
+		"water": return Color("#285f82")
+		"sand": return Color("#c9b072")
+		"magma": return Color("#b5432a")
+		"geode": return Color("#7d5ba6")
+		"spawn": return Color("#94393f")
+		_: return Color("#586454")
 
 # --- Enemy rendering: sprite walk-frames with procedural silhouette fallback ---
 
@@ -1937,6 +2094,21 @@ func _update_hud() -> void:
 		status_label.text = "Wave %d / %d   Enemies %d" % [wave, MAX_WAVE, enemies.size() + spawn_left]
 	else:
 		status_label.text = "Wave %d / %d   Next in %.0fs" % [wave + 1, MAX_WAVE, wave_timer]
+	if lag_label != null:
+		lag_label.text = "Lag counters  path %s   power %s   logistics %s   projectile %s   draw %s" % [
+			_format_lag_counter(lag_pathfinding_calls),
+			_format_lag_counter(lag_power_network_work),
+			_format_lag_counter(lag_logistics_work),
+			_format_lag_counter(lag_projectile_collision_work),
+			_format_lag_counter(lag_draw_work),
+		]
+
+func _format_lag_counter(value: int) -> String:
+	if value >= 1000000:
+		return "%.1fM" % (float(value) / 1000000.0)
+	if value >= 1000:
+		return "%.1fk" % (float(value) / 1000.0)
+	return str(value)
 
 func _update_info() -> void:
 	if selected == "":

@@ -1318,12 +1318,7 @@ func _building_item_capacity(b: Dictionary, kind: String) -> int:
 	return BuildingRules.building_item_capacity(defs, b, kind)
 
 func _deliver_liquid_to_building(b: Dictionary, kind: String) -> bool:
-	if not _accepts_liquid(b, kind):
-		return false
-	if _store_count(b, kind) >= _building_liquid_capacity(b, kind):
-		return false
-	_add_store(b, kind, 1)
-	return true
+	return BuildingStore.deliver_liquid(defs, b, kind)
 
 func _building_liquid_capacity(b: Dictionary, kind: String) -> int:
 	return BuildingRules.building_liquid_capacity(defs, b, kind)

@@ -49,3 +49,11 @@ static func deliver_item(defs: Dictionary, b: Dictionary, kind: String, xp_value
 		return false
 	add(b, kind, 1)
 	return true
+
+static func deliver_liquid(defs: Dictionary, b: Dictionary, kind: String) -> bool:
+	if not BuildingRules.accepts_liquid(defs, b, kind):
+		return false
+	if count(b, kind) >= BuildingRules.building_liquid_capacity(defs, b, kind):
+		return false
+	add(b, kind, 1)
+	return true

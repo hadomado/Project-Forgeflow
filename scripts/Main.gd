@@ -7,6 +7,7 @@ const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
+const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
 const Grid = preload("res://scripts/shared/Grid.gd")
 
 const TILE = 32
@@ -592,10 +593,7 @@ func _update_orbs(delta: float) -> void:
 
 # --- VS: leveling ---
 func _xp_needed(level: int) -> int:
-	# Rising curve: 5, 8, 12, 17, 23, 30, ... (differences +3, +4, +5, ...).
-	# l*(l+5) is always even, so integer division is exact.
-	var l := level - 1
-	return 5 + l * (l + 5) / 2
+	return VSProgress.xp_needed(level)
 
 func _add_vs_xp(amount: int) -> void:
 	if amount <= 0:
@@ -611,13 +609,7 @@ func _check_level_up() -> void:
 
 # --- VS: xp sink ---
 func _xp_value(kind: String) -> int:
-	match kind:
-		"graphite":
-			return 3
-		"copper", "coal":
-			return 1
-		_:
-			return 0
+	return VSProgress.xp_value(kind)
 
 func _xp_sink_consume_one(b: Dictionary) -> int:
 	for kind in ["graphite", "copper", "coal"]:
@@ -716,26 +708,7 @@ func _spell_projectile(from_pos: Vector2, to_pos: Vector2, damage: float, speed:
 
 # --- VS: level-up UI ---
 func _roll_level_up_choices() -> Array:
-	var pool: Array = []
-	for id in spell_defs.keys():
-		var lvl := int(owned_spells.get(id, 0))
-		if lvl == 0:
-			pool.append({"type": "spell", "id": id, "label": "New: " + String(spell_defs[id].name)})
-		else:
-			pool.append({"type": "spell", "id": id, "label": String(spell_defs[id].name) + " Lv " + str(lvl + 1)})
-	for id in upgrade_defs.keys():
-		var ulvl := int(owned_upgrades.get(id, 0))
-		if ulvl < int(upgrade_defs[id].get("max", 4)):
-			pool.append({"type": "upgrade", "id": id, "label": String(upgrade_defs[id].name) + " Lv " + str(ulvl + 1)})
-	pool.shuffle()
-	var out: Array = []
-	for c in pool:
-		if out.size() >= 3:
-			break
-		out.append(c)
-	while out.size() < 3:
-		out.append({"type": "heal", "id": "heal", "label": "Restore 25 Health"})
-	return out
+	return VSProgress.roll_level_up_choices(spell_defs, upgrade_defs, owned_spells, owned_upgrades)
 
 func _apply_level_up_choice(choice: Dictionary) -> void:
 	match String(choice.get("type", "")):

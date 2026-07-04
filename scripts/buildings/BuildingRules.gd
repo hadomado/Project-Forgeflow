@@ -21,6 +21,23 @@ static func is_power_turret_id(defs: Dictionary, id: String) -> bool:
 static func is_factory_id(defs: Dictionary, id: String) -> bool:
 	return defs.get(id, {}).has("factory_recipe")
 
+static func is_power_producer(defs: Dictionary, b: Dictionary) -> bool:
+	return defs.get(b.id, {}).has("power_production")
+
+static func is_power_consumer(defs: Dictionary, b: Dictionary) -> bool:
+	return defs.get(b.id, {}).has("power_consumption")
+
+static func is_power_storage(_defs: Dictionary, b: Dictionary) -> bool:
+	return b.id == "battery" or b.id == "core"
+
+static func is_power_participant(defs: Dictionary, b: Dictionary) -> bool:
+	return is_power_producer(defs, b) or is_power_consumer(defs, b) or is_power_storage(defs, b)
+
+static func power_storage_capacity(defs: Dictionary, b: Dictionary) -> float:
+	if b.id == "core":
+		return float(defs["battery"]["power_storage"])
+	return float(defs.get(b.id, {}).get("power_storage", 0.0))
+
 static func accepts_water(defs: Dictionary, b: Dictionary) -> bool:
 	return defs.get(b.id, {}).get("accepts_water", false)
 

@@ -1070,21 +1070,19 @@ func _process_network(comp_nodes: Array[Dictionary], comp_edges: Array[Dictionar
 	_assign_power_status(participants, status)
 
 func _is_power_producer(b: Dictionary) -> bool:
-	return defs.get(b.id, {}).has("power_production")
+	return BuildingRules.is_power_producer(defs, b)
 
 func _is_power_consumer(b: Dictionary) -> bool:
-	return defs.get(b.id, {}).has("power_consumption")
+	return BuildingRules.is_power_consumer(defs, b)
 
 func _is_power_storage(b: Dictionary) -> bool:
-	return b.id == "battery" or b.id == "core"
+	return BuildingRules.is_power_storage(defs, b)
 
 func _is_power_participant(b: Dictionary) -> bool:
-	return _is_power_producer(b) or _is_power_consumer(b) or _is_power_storage(b)
+	return BuildingRules.is_power_participant(defs, b)
 
 func _power_storage_capacity(b: Dictionary) -> float:
-	if b.id == "core":
-		return float(defs["battery"]["power_storage"])
-	return float(defs.get(b.id, {}).get("power_storage", 0.0))
+	return BuildingRules.power_storage_capacity(defs, b)
 
 func _building_in_node_range(b: Dictionary, node: Dictionary) -> bool:
 	return _building_center(b).distance_to(_building_center(node)) <= NODE_RANGE * TILE

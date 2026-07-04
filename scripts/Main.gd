@@ -5,6 +5,7 @@ const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
+const Grid = preload("res://scripts/shared/Grid.gd")
 
 const TILE = 32
 const MAP_W = 60
@@ -2663,20 +2664,16 @@ func _restart() -> void:
 	_place_core()
 
 func _cells(pos: Vector2i, size: Vector2i) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	for y in range(pos.y, pos.y + size.y):
-		for x in range(pos.x, pos.x + size.x):
-			out.append(Vector2i(x, y))
-	return out
+	return Grid.cells(pos, size)
 
 func _inside(p: Vector2i) -> bool:
-	return p.x >= 0 and p.y >= 0 and p.x < MAP_W and p.y < MAP_H
+	return Grid.inside(p, MAP_W, MAP_H)
 
 func _cell_center(p: Vector2i) -> Vector2:
-	return Vector2(p * TILE) + Vector2(TILE * 0.5, TILE * 0.5)
+	return Grid.cell_center(p, TILE)
 
 func _world_cell(pos: Vector2) -> Vector2i:
-	return Vector2i(floori(pos.x / TILE), floori(pos.y / TILE))
+	return Grid.world_cell(pos, TILE)
 
 func _mouse_cell() -> Vector2i:
 	return _world_cell(get_global_mouse_position())

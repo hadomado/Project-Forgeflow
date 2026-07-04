@@ -2,6 +2,7 @@ extends Node2D
 
 const GameData = preload("res://scripts/shared/GameData.gd")
 const BuildingData = preload("res://scripts/buildings/BuildingData.gd")
+const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 
 const TILE = 32
 const MAP_W = 60
@@ -121,41 +122,7 @@ var ore_colors: Dictionary = GameData.ore_colors()
 
 var defs: Dictionary = BuildingData.defs(CORE_SIZE)
 var building_health: Dictionary = BuildingData.health(TEST_CORE_HEALTH)
-# Each enemy carries: base stats, a `sheet` (which CC0 walk sprite drives its
-# animation), a `shape` (procedural fallback silhouette when art is missing) and
-# an optional mechanic block that `_update_enemy_mechanics` / `_damage_enemy` read.
-# The three starters (scout/grunt/ranger) are deliberately plain ranged fodder;
-# every later archetype layers on one signature mechanic.
-var enemy_defs = {
-	# --- Starter trio: plain ranged fodder, no special mechanic. ---
-	"scout": {"name": "Scout", "hp": 24.0, "speed": 78.0, "range": 135.0, "fire_rate": 0.95, "damage": 6.0, "bullet_speed": 360.0, "spread": 0.18, "color": Color("#e07055"), "radius": 10.0, "sheet": "scout", "shape": "triangle"},
-	"grunt": {"name": "Grunt", "hp": 42.0, "speed": 56.0, "range": 150.0, "fire_rate": 1.15, "damage": 9.0, "bullet_speed": 330.0, "spread": 0.13, "color": Color("#c94c43"), "radius": 12.0, "sheet": "crawler", "shape": "diamond"},
-	"ranger": {"name": "Ranger", "hp": 36.0, "speed": 50.0, "range": 225.0, "fire_rate": 1.45, "damage": 8.0, "bullet_speed": 430.0, "spread": 0.08, "color": Color("#d0864a"), "radius": 11.0, "sheet": "runner", "shape": "triangle"},
-	# --- Bruiser: leaps toward its target in periodic bursts. ---
-	"bruiser": {"name": "Bruiser", "hp": 92.0, "speed": 36.0, "range": 120.0, "fire_rate": 1.65, "damage": 16.0, "bullet_speed": 280.0, "spread": 0.2, "color": Color("#a63f4c"), "radius": 14.0, "sheet": "bruiser", "shape": "hex", "leap": {"interval": 3.2, "speed": 430.0, "dur": 0.32}},
-	# --- Siege: lobs shells that burst for splash damage on impact. ---
-	"siege": {"name": "Siege", "hp": 135.0, "speed": 28.0, "range": 250.0, "fire_rate": 2.2, "damage": 24.0, "bullet_speed": 250.0, "spread": 0.06, "color": Color("#7d3346"), "radius": 16.0, "sheet": "boss_seed", "shape": "hex", "splash": {"radius": 54.0}},
-	# --- Swarmling (wave 1+): melee kamikaze, no gun, tears in at contact range. ---
-	"swarmling": {"name": "Swarmling", "hp": 12.0, "speed": 118.0, "range": 70.0, "fire_rate": 0.7, "damage": 4.0, "bullet_speed": 300.0, "spread": 0.25, "color": Color("#9fd14f"), "radius": 8.0, "sheet": "crawler", "shape": "triangle", "melee": {"dps": 26.0, "reach": 20.0}},
-	# --- Wraith (wave 3+): blinks toward prey and phases out (brief invulnerability). ---
-	"wraith": {"name": "Wraith", "hp": 28.0, "speed": 96.0, "range": 170.0, "fire_rate": 0.85, "damage": 7.0, "bullet_speed": 420.0, "spread": 0.14, "color": Color("#9a7fd1"), "radius": 11.0, "sheet": "runner", "shape": "diamond", "blink": {"interval": 2.6, "dist": 96.0, "invuln": 0.45}},
-	# --- Berserker (wave 4+): enrages under 50% HP — faster, harder, quicker shots. ---
-	"berserker": {"name": "Berserker", "hp": 70.0, "speed": 88.0, "range": 96.0, "fire_rate": 0.9, "damage": 18.0, "bullet_speed": 340.0, "spread": 0.22, "color": Color("#ff5a2b"), "radius": 13.0, "sheet": "bruiser", "shape": "spike", "enrage": {"hp": 0.5, "speed": 1.6, "damage": 1.7, "fire": 0.6}},
-	# --- Marksman (wave 5+): telegraphs an aim line, then fires a piercing heavy bolt. ---
-	"marksman": {"name": "Marksman", "hp": 40.0, "speed": 46.0, "range": 320.0, "fire_rate": 2.4, "damage": 22.0, "bullet_speed": 560.0, "spread": 0.015, "color": Color("#3fa9a0"), "radius": 12.0, "sheet": "runner", "shape": "arrow", "charged_shot": {"charge": 0.85, "damage": 34.0, "bullet_speed": 660.0, "pierce": true}},
-	# --- Warden (wave 5+): armored, blocks most damage from its facing arc. ---
-	"warden": {"name": "Warden", "hp": 160.0, "speed": 40.0, "range": 140.0, "fire_rate": 1.5, "damage": 14.0, "bullet_speed": 300.0, "spread": 0.12, "color": Color("#4f6fae"), "radius": 15.0, "sheet": "bruiser", "shape": "hex", "armor": 6.0, "shield": {"reduction": 0.65, "arc": 150.0}},
-	# --- Brood (wave 6+): continuously buds swarmlings and bursts into more on death. ---
-	"brood": {"name": "Brood", "hp": 58.0, "speed": 60.0, "range": 130.0, "fire_rate": 1.3, "damage": 8.0, "bullet_speed": 320.0, "spread": 0.16, "color": Color("#b455a8"), "radius": 14.0, "sheet": "boss_seed", "shape": "blob", "on_death_spawn": {"kind": "swarmling", "count": 3}, "spawner": {"kind": "swarmling", "count": 1, "interval": 5.5, "max": 6}},
-	# --- Mender (wave 6+): support that heals nearby wounded allies, weak alone. ---
-	"mender": {"name": "Mender", "hp": 66.0, "speed": 52.0, "range": 150.0, "fire_rate": 2.0, "damage": 5.0, "bullet_speed": 300.0, "spread": 0.18, "color": Color("#4fd18a"), "radius": 13.0, "sheet": "crawler", "shape": "cross", "heal_aura": {"rate": 10.0, "radius": 150.0}},
-	# --- Artillery (wave 7+): slow, long-range, heavy wide-splash barrage. ---
-	"artillery": {"name": "Artillery", "hp": 120.0, "speed": 24.0, "range": 340.0, "fire_rate": 2.8, "damage": 30.0, "bullet_speed": 230.0, "spread": 0.28, "color": Color("#c9a23f"), "radius": 15.0, "sheet": "boss_seed", "shape": "hex", "splash": {"radius": 74.0}},
-	# --- Juggernaut (wave 9+): heavy armor plus a short-range ground-slam shockwave. ---
-	"juggernaut": {"name": "Juggernaut", "hp": 320.0, "speed": 22.0, "range": 110.0, "fire_rate": 1.9, "damage": 34.0, "bullet_speed": 260.0, "spread": 0.1, "color": Color("#4a5568"), "radius": 20.0, "sheet": "bruiser", "shape": "hex", "armor": 10.0, "slam": {"interval": 2.6, "radius": 76.0, "damage": 30.0}},
-	# --- Overseer (wave 10 boss): heals, summons wraiths, and enrages when low. ---
-	"overseer": {"name": "Overseer", "hp": 420.0, "speed": 34.0, "range": 300.0, "fire_rate": 1.3, "damage": 26.0, "bullet_speed": 400.0, "spread": 0.05, "color": Color("#5a2f8a"), "radius": 22.0, "sheet": "boss_seed", "shape": "blob", "heal_aura": {"rate": 6.0, "radius": 200.0}, "spawner": {"kind": "wraith", "count": 1, "interval": 7.0, "max": 4}, "enrage": {"hp": 0.4, "speed": 1.35, "damage": 1.4, "fire": 0.7}}
-}
+var enemy_defs: Dictionary = EnemyData.defs()
 
 var spell_defs: Dictionary = GameData.spell_defs()
 var upgrade_defs: Dictionary = GameData.upgrade_defs()

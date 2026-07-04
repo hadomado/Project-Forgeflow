@@ -10,6 +10,7 @@ const BuildingPlacement = preload("res://scripts/buildings/BuildingPlacement.gd"
 const EnemyData = preload("res://scripts/enemies/EnemyData.gd")
 const EnemyArt = preload("res://scripts/enemies/EnemyArt.gd")
 const WaveData = preload("res://scripts/enemies/WaveData.gd")
+const EnemyRuntime = preload("res://scripts/enemies/EnemyRuntime.gd")
 const MapGenerator = preload("res://scripts/map/MapGenerator.gd")
 const VSData = preload("res://scripts/classes/vampire_survivor/VSData.gd")
 const VSProgress = preload("res://scripts/classes/vampire_survivor/VSProgress.gd")
@@ -1401,29 +1402,7 @@ func _spawn_enemy(kind: String) -> void:
 	enemies.append(_make_enemy(kind, _cell_center(Vector2i(5, 5))))
 
 func _make_enemy(kind: String, pos: Vector2) -> Dictionary:
-	var def: Dictionary = enemy_defs.get(kind, enemy_defs.grunt)
-	var start = _world_cell(pos)
-	var goal = CORE_POS + Vector2i(1, 1)
-	var path = _find_enemy_path(start, goal, false)
-	var fallback = _find_enemy_path(start, goal, true)
-	var max_hp: float = def.hp + wave * 4.0
-	var e := {"kind": kind, "pos": pos, "hp": max_hp, "max_hp": max_hp, "attack": 0.0, "shot_timer": randf() * def.fire_rate, "path_timer": 0.0, "path": path, "fallback_path": fallback, "path_index": 0,
-		"facing": Vector2.RIGHT, "hit_flash": 0.0, "invuln": 0.0, "spawn_anim": 0.0, "enraged": false}
-	# Seed per-mechanic timers with jitter so a wave doesn't act in lockstep.
-	if def.has("leap"):
-		e["leap_timer"] = randf_range(1.0, float(def.leap.interval))
-		e["leap_left"] = 0.0
-	if def.has("blink"):
-		e["blink_timer"] = randf_range(0.8, float(def.blink.interval))
-	if def.has("slam"):
-		e["slam_timer"] = randf_range(1.0, float(def.slam.interval))
-	if def.has("spawner"):
-		e["spawn_timer"] = float(def.spawner.interval)
-		e["spawn_made"] = 0
-	if def.has("charged_shot"):
-		e["charging"] = false
-		e["charge_left"] = 0.0
-	return e
+	return EnemyRuntime.make_enemy(enemy_defs, kind, pos, wave, TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
 
 func _update_enemies(delta: float) -> void:
 	pending_enemy_spawns.clear()
@@ -1472,10 +1451,7 @@ func _update_enemies(delta: float) -> void:
 
 # Effective move speed: enraged archetypes surge once their HP threshold is crossed.
 func _enemy_speed(e: Dictionary, def: Dictionary) -> float:
-	var s: float = float(def.speed)
-	if e.get("enraged", false) and def.has("enrage"):
-		s *= float(def.enrage.get("speed", 1.0))
-	return s
+	return EnemyRuntime.speed(e, def)
 
 # Per-enemy signature mechanics. Runs before shooting/movement each frame.
 func _update_enemy_mechanics(e: Dictionary, def: Dictionary, delta: float) -> void:
@@ -1534,52 +1510,16 @@ func _update_enemy_mechanics(e: Dictionary, def: Dictionary, delta: float) -> vo
 
 # Heal nearby living enemies (support units) up to their max HP.
 func _enemy_heal_aura(healer: Dictionary, aura: Dictionary, delta: float) -> void:
-	var amount: float = float(aura.get("rate", 0.0)) * delta
-	var radius: float = float(aura.get("radius", 0.0))
-	if amount <= 0.0 or radius <= 0.0:
-		return
-	for other in enemies:
-		if other == healer or other.hp <= 0.0:
-			continue
-		if healer.pos.distance_to(other.pos) > radius:
-			continue
-		var cap: float = float(other.get("max_hp", other.hp))
-		other.hp = min(other.hp + amount, cap)
+	EnemyRuntime.heal_aura(enemies, healer, aura, delta)
 
 # --- Damage routing & FX -----------------------------------------------------
 
 # Single entry point for all damage dealt TO enemies. Honors phase invulnerability,
 # directional shields, and flat armor. opts: {dir=travel dir, source=origin point, dot=bool}.
 func _damage_enemy(e: Dictionary, amount: float, opts: Dictionary = {}) -> void:
-	if amount <= 0.0 or e.hp <= 0.0:
-		return
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	if float(e.get("invuln", 0.0)) > 0.0:
-		_spawn_effect("hit", e.pos, float(def.get("radius", 12.0)) * 0.9, Color(0.75, 0.85, 1.0))
-		return
-	var final := amount
-	var is_dot: bool = bool(opts.get("dot", false))
-	if not is_dot:
-		# Directional shield: heavy reduction when struck from the facing arc.
-		if def.has("shield"):
-			var incoming := Vector2.ZERO
-			if opts.has("dir"):
-				incoming = Vector2(opts.dir).normalized()
-			elif opts.has("source"):
-				incoming = (e.pos - Vector2(opts.source)).normalized()
-			if incoming != Vector2.ZERO:
-				var facing: Vector2 = e.get("facing", Vector2.RIGHT)
-				# Blocked when the shot travels into the front (facing opposes travel dir).
-				if facing.dot(-incoming) > cos(deg_to_rad(float(def.shield.arc) * 0.5)):
-					final *= (1.0 - float(def.shield.reduction))
-					_spawn_effect("hit", e.pos - incoming * float(def.get("radius", 14.0)), float(def.get("radius", 14.0)) * 0.8, Color("#9fc0ff"))
-		# Flat armor, but always let a sliver (10%) through.
-		if def.has("armor"):
-			final = max(final - float(def.armor), amount * 0.1)
-	e.hp -= final
-	e.hit_flash = 0.12
-	if not is_dot:
-		_spawn_effect("hit", e.pos, float(def.get("radius", 12.0)) * 0.8, Color(1, 1, 1))
+	for fx in EnemyRuntime.damage_enemy(e, def, amount, opts):
+		enemy_effects.append(fx)
 
 # Artillery/siege shells: burst on impact, hitting the avatar and nearby buildings.
 func _detonate_splash(pos: Vector2, radius: float, dmg: float) -> void:
@@ -1599,27 +1539,14 @@ func _detonate_splash(pos: Vector2, radius: float, dmg: float) -> void:
 			_damage_building(b, dmg)
 
 func _spawn_effect(kind: String, pos: Vector2, rad: float = 12.0, color: Color = Color(1, 1, 1)) -> void:
-	enemy_effects.append({"kind": kind, "pos": pos, "t": 0.0, "dur": 0.42, "scale": rad, "color": color})
+	enemy_effects.append(EnemyRuntime.effect(kind, pos, rad, color))
 
 func _spawn_telegraph(t: Dictionary) -> void:
 	enemy_telegraphs.append(t)
 
 # Advance transient hit/burst sprite anims and warning telegraphs; cull the expired.
 func _update_enemy_effects(delta: float) -> void:
-	var i := 0
-	while i < enemy_effects.size():
-		enemy_effects[i].t += delta
-		if enemy_effects[i].t >= enemy_effects[i].dur:
-			enemy_effects.remove_at(i)
-		else:
-			i += 1
-	var j := 0
-	while j < enemy_telegraphs.size():
-		enemy_telegraphs[j].life = float(enemy_telegraphs[j].life) - delta
-		if enemy_telegraphs[j].life <= 0.0:
-			enemy_telegraphs.remove_at(j)
-		else:
-			j += 1
+	EnemyRuntime.update_effects(enemy_effects, enemy_telegraphs, delta)
 
 # Brood-style enemies burst into smaller spawns when they die.
 func _enemy_on_death(e: Dictionary) -> void:
@@ -1634,120 +1561,26 @@ func _enemy_on_death(e: Dictionary) -> void:
 		pending_enemy_spawns.append(_make_enemy(kind, e.pos + jitter))
 
 func _update_enemy_path(e: Dictionary) -> void:
-	e.path_timer = e.get("path_timer", 0.0) - get_process_delta_time()
-	var current = _world_cell(e.pos)
-	var goal = CORE_POS + Vector2i(1, 1)
-	if e.path_timer <= 0.0 or e.get("path", []).is_empty() or not e.path.has(current):
-		var path = _find_enemy_path(current, goal, false)
-		if not path.is_empty():
-			e.path = path
-			e.path_index = 0
-		elif e.get("path", []).is_empty():
-			e.path = _find_enemy_path(current, goal, true)
-			e.path_index = 0
-		e.fallback_path = _find_enemy_path(current, goal, true)
-		e.path_timer = 0.55
+	EnemyRuntime.update_path(e, get_process_delta_time(), TILE, CORE_POS, terrain, buildings, MAP_W, MAP_H, defs)
 
 func _enemy_move_target(e: Dictionary) -> Vector2:
-	var path: Array = e.get("path", [])
-	if path.is_empty():
-		path = e.get("fallback_path", [])
-	if path.is_empty():
-		return _cell_center(CORE_POS + Vector2i(1, 1))
-	var current = _world_cell(e.pos)
-	var index = int(e.get("path_index", 0))
-	var current_index = path.find(current)
-	if current_index >= 0:
-		index = current_index
-	index = clamp(index + 1, 0, path.size() - 1)
-	e.path_index = index
-	return _cell_center(path[index])
+	return EnemyRuntime.move_target(e, TILE, CORE_POS)
 
 func _enemy_tile_passable(cell: Vector2i, ignore_player_blocks: bool) -> bool:
-	if not _inside(cell):
-		return false
-	if terrain.get(cell, "rock") == "rock":
-		return false
-	if _core_contains(cell):
-		return true
-	var b = buildings.get(cell)
-	if b == null or ignore_player_blocks:
-		return true
-	return _is_belt_building(b) or b.id == "pipe"
+	return EnemyRuntime.tile_passable(cell, ignore_player_blocks, terrain, buildings, MAP_W, MAP_H, CORE_POS, defs)
 
 func _enemy_blocking_building(cell: Vector2i) -> Variant:
-	var b = buildings.get(cell)
-	if b == null or _is_belt_building(b) or b.id == "pipe":
-		return null
-	return b
+	return EnemyRuntime.blocking_building(cell, buildings, defs)
 
 func _find_enemy_path(start: Vector2i, goal: Vector2i, ignore_player_blocks: bool) -> Array[Vector2i]:
-	if not _inside(start) or not _inside(goal):
-		return []
-	var frontier: Array[Vector2i] = [start]
-	var came_from = {start: start}
-	var cursor = 0
-	while cursor < frontier.size():
-		var current = frontier[cursor]
-		cursor += 1
-		if current == goal or _core_contains(current):
-			goal = current
-			break
-		for d in DIRS:
-			var next = current + d
-			if came_from.has(next):
-				continue
-			if not _enemy_tile_passable(next, ignore_player_blocks):
-				continue
-			came_from[next] = current
-			frontier.append(next)
-	if not came_from.has(goal):
-		return []
-	var path: Array[Vector2i] = []
-	var p = goal
-	while p != start:
-		path.push_front(p)
-		p = came_from[p]
-	path.push_front(start)
-	return path
+	return EnemyRuntime.find_path(start, goal, ignore_player_blocks, terrain, buildings, MAP_W, MAP_H, CORE_POS, defs)
 
 func _enemy_path_direction(e: Dictionary) -> Vector2:
-	var path: Array = e.get("path", [])
-	var index = int(e.get("path_index", 0))
-	if path.size() > index + 1:
-		return Vector2(path[index + 1] - path[index]).normalized()
-	return (_cell_center(CORE_POS + Vector2i(1, 1)) - e.pos).normalized()
+	return EnemyRuntime.path_direction(e, TILE, CORE_POS)
 
 func _enemy_target(e: Dictionary) -> Dictionary:
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)
-	var best: Dictionary = {}
-	var best_score = INF
-	var path_dir = _enemy_path_direction(e)
-	var avatar_pos = _active_avatar_pos()
-	if _active_avatar_alive() and e.pos.distance_to(avatar_pos) <= def.range:
-		var to_player = (avatar_pos - e.pos).normalized()
-		best = {"type": "player", "pos": avatar_pos}
-		best_score = e.pos.distance_to(avatar_pos) - path_dir.dot(to_player) * 18.0
-	var seen = {}
-	for b in buildings.values():
-		var key = _building_key(b)
-		if seen.has(key):
-			continue
-		seen[key] = true
-		if b.id == "core":
-			continue
-		var pos = _cell_center(b.pos)
-		var dist = e.pos.distance_to(pos)
-		if dist > def.range:
-			continue
-		var to_target = (pos - e.pos).normalized()
-		var score = dist - path_dir.dot(to_target) * 28.0
-		if b.id != "wall":
-			score -= 52.0
-		if score < best_score:
-			best_score = score
-			best = {"type": "building", "pos": pos, "building": b}
-	return best
+	return EnemyRuntime.target(e, def, buildings, _active_avatar_alive(), _active_avatar_pos(), TILE, CORE_POS)
 
 func _enemy_shoot(e: Dictionary, delta: float) -> void:
 	var def: Dictionary = enemy_defs.get(e.kind, enemy_defs.grunt)

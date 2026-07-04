@@ -755,8 +755,7 @@ func _add_building(id: String, cell: Vector2i, rot: int, built: bool) -> void:
 		buildings[p] = b
 
 func _make_building(id: String, cell: Vector2i, rot: int, built: bool) -> Dictionary:
-	var size: Vector2i = defs.get(id, {}).get("size", Vector2i(1, 1))
-	return {"id": id, "pos": cell, "rot": rot, "size": size, "built": built, "timer": 0.0, "health": building_health.get(id, 100.0), "fuel": 0.0, "powered": false, "store": {}, "output_cursor": 0, "produced": 0}
+	return BuildingRuntime.make(defs, building_health, id, cell, rot, built)
 
 func _update_blueprints() -> void:
 	var i = 0

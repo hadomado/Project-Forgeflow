@@ -303,6 +303,47 @@ static func projectile(from_pos: Vector2, to_pos: Vector2, damage: float, speed_
 		proj[k] = extra[k]
 	return proj
 
+static func update_projectiles(projectiles: Array[Dictionary], enemies: Array[Dictionary], buildings: Dictionary, active_avatar_alive: bool, active_avatar_pos: Vector2, tile_size: int, delta: float) -> Dictionary:
+	var events := {"enemy_damage": [], "avatar_damage": [], "building_damage": [], "splashes": []}
+	var i := 0
+	while i < projectiles.size():
+		var p: Dictionary = projectiles[i]
+		p.pos += p.vel * delta
+		p.life -= delta
+		var hit := false
+		if p.get("team", "player") == "player":
+			for e in enemies:
+				if e.hp <= 0.0:
+					continue
+				if p.pos.distance_to(e.pos) < 18.0:
+					events.enemy_damage.append({"enemy": e, "amount": float(p.damage), "opts": {"dir": p.vel.normalized()}})
+					hit = true
+					break
+		else:
+			var splash_r := float(p.get("splash", 0.0))
+			var near_avatar: bool = active_avatar_alive and p.pos.distance_to(active_avatar_pos) < 16.0
+			var cell := Grid.world_cell(p.pos, tile_size)
+			var b = buildings.get(cell)
+			var near_building: bool = b != null and b.id != "core"
+			if splash_r > 0.0:
+				if near_avatar or near_building or p.life <= 0.0:
+					events.splashes.append({"pos": p.pos, "radius": splash_r, "damage": float(p.damage)})
+					hit = true
+			elif near_avatar and not p.get("hit_avatar", false):
+				events.avatar_damage.append(float(p.damage))
+				if p.get("pierce", false):
+					p["hit_avatar"] = true
+				else:
+					hit = true
+			elif near_building and not p.get("pierce", false):
+				events.building_damage.append({"building": b, "amount": float(p.damage)})
+				hit = true
+		if hit or p.life <= 0.0:
+			projectiles.remove_at(i)
+		else:
+			i += 1
+	return events
+
 static func update_effects(effects: Array[Dictionary], telegraphs: Array[Dictionary], delta: float) -> void:
 	var i := 0
 	while i < effects.size():

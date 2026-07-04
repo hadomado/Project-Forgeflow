@@ -1579,44 +1579,17 @@ func _damage_active_avatar(amount: float) -> void:
 		_damage_player(amount)
 
 func _update_projectiles(delta: float) -> void:
-	var i = 0
-	while i < projectiles.size():
-		var p = projectiles[i]
-		p.pos += p.vel * delta
-		p.life -= delta
-		var hit = false
-		if p.get("team", "player") == "player":
-			for e in enemies:
-				if e.hp <= 0.0:
-					continue
-				if p.pos.distance_to(e.pos) < 18.0:
-					_damage_enemy(e, float(p.damage), {"dir": p.vel.normalized()})
-					hit = true
-					break
-		else:
-			var splash_r := float(p.get("splash", 0.0))
-			var near_avatar: bool = _active_avatar_alive() and p.pos.distance_to(_active_avatar_pos()) < 16.0
-			var cell = _world_cell(p.pos)
-			var b = buildings.get(cell)
-			var near_building: bool = b != null and b.id != "core"
-			if splash_r > 0.0:
-				# Shells detonate on any contact, or where they run out of travel.
-				if near_avatar or near_building or p.life <= 0.0:
-					_detonate_splash(p.pos, splash_r, float(p.damage))
-					hit = true
-			elif near_avatar and not p.get("hit_avatar", false):
-				_damage_active_avatar(float(p.damage))
-				if p.get("pierce", false):
-					p["hit_avatar"] = true  # heavy bolt keeps flying, no re-hit
-				else:
-					hit = true
-			elif near_building and not p.get("pierce", false):
-				_damage_building(b, float(p.damage))
-				hit = true
-		if hit or p.life <= 0.0:
-			projectiles.remove_at(i)
-		else:
-			i += 1
+	_apply_projectile_events(EnemyRuntime.update_projectiles(projectiles, enemies, buildings, _active_avatar_alive(), _active_avatar_pos(), TILE, delta))
+
+func _apply_projectile_events(events: Dictionary) -> void:
+	for hit in events.get("enemy_damage", []):
+		_damage_enemy(hit.enemy, float(hit.amount), hit.get("opts", {}))
+	for amount in events.get("avatar_damage", []):
+		_damage_active_avatar(float(amount))
+	for hit in events.get("building_damage", []):
+		_damage_building(hit.building, float(hit.amount))
+	for splash in events.get("splashes", []):
+		_detonate_splash(splash.pos, float(splash.radius), float(splash.damage))
 
 func _shoot_at(world_pos: Vector2) -> void:
 	if player_alive:
